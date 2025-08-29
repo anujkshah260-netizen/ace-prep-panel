@@ -14,7 +14,158 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          created_at: string | null
+          experience_years: number | null
+          full_name: string | null
+          id: string
+          role: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          experience_years?: number | null
+          full_name?: string | null
+          id: string
+          role?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          experience_years?: number | null
+          full_name?: string | null
+          id?: string
+          role?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      topic_content_versions: {
+        Row: {
+          bullets: Json | null
+          created_at: string | null
+          cross_questions: Json | null
+          id: string
+          is_favorite: boolean | null
+          meta: Json | null
+          script: string | null
+          source_notes: string | null
+          topic_id: string
+          user_id: string
+        }
+        Insert: {
+          bullets?: Json | null
+          created_at?: string | null
+          cross_questions?: Json | null
+          id?: string
+          is_favorite?: boolean | null
+          meta?: Json | null
+          script?: string | null
+          source_notes?: string | null
+          topic_id: string
+          user_id: string
+        }
+        Update: {
+          bullets?: Json | null
+          created_at?: string | null
+          cross_questions?: Json | null
+          id?: string
+          is_favorite?: boolean | null
+          meta?: Json | null
+          script?: string | null
+          source_notes?: string | null
+          topic_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_content_versions_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topic_current_version: {
+        Row: {
+          topic_id: string
+          updated_at: string | null
+          user_id: string
+          version_id: string
+        }
+        Insert: {
+          topic_id: string
+          updated_at?: string | null
+          user_id: string
+          version_id: string
+        }
+        Update: {
+          topic_id?: string
+          updated_at?: string | null
+          user_id?: string
+          version_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_current_version_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: true
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topic_current_version_version_id_fkey"
+            columns: ["version_id"]
+            isOneToOne: false
+            referencedRelation: "topic_content_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topics: {
+        Row: {
+          category: string | null
+          color: string | null
+          created_at: string | null
+          icon_name: string | null
+          id: string
+          is_active: boolean | null
+          slug: string
+          sort_order: number | null
+          title: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          category?: string | null
+          color?: string | null
+          created_at?: string | null
+          icon_name?: string | null
+          id?: string
+          is_active?: boolean | null
+          slug: string
+          sort_order?: number | null
+          title: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          category?: string | null
+          color?: string | null
+          created_at?: string | null
+          icon_name?: string | null
+          id?: string
+          is_active?: boolean | null
+          slug?: string
+          sort_order?: number | null
+          title?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
