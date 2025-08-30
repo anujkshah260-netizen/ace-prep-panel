@@ -14,7 +14,7 @@ import {
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 
-interface Document {
+interface DocumentType {
   id: string;
   name: string;
   type: 'resume' | 'job_description' | 'supporting_document';
@@ -32,7 +32,7 @@ interface DocumentSession {
 }
 
 export const DocumentManager = () => {
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const [documents, setDocuments] = useState<DocumentType[]>([]);
   const [sessions, setSessions] = useState<DocumentSession[]>([]);
   const [currentSession, setCurrentSession] = useState<DocumentSession | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -42,7 +42,7 @@ export const DocumentManager = () => {
   const [newSessionName, setNewSessionName] = useState('');
   const [newSessionDescription, setNewSessionDescription] = useState('');
   const [showNewSessionForm, setShowNewSessionForm] = useState(false);
-  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null);
+  const [selectedDocument, setSelectedDocument] = useState<DocumentType | null>(null);
   const [showDocumentModal, setShowDocumentModal] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -57,7 +57,10 @@ export const DocumentManager = () => {
         .order('created_at', { ascending: false });
       
       if (error) throw error;
-      setDocuments(data || []);
+      setDocuments(data?.map((doc: any) => ({
+        ...doc,
+        type: doc.type as 'resume' | 'job_description' | 'supporting_document'
+      })) || []);
     } catch (error) {
       console.error('Error loading documents:', error);
       toast({
@@ -216,27 +219,11 @@ export const DocumentManager = () => {
 
   const extractTextFromFile = async (file: File): Promise<string> => {
     try {
-      // For text files, extract the actual content
-      if (file.type === 'text/plain') {
-        return await file.text();
-      }
-      
-      // For PDFs and other files, we'll need to use a service
-      // For now, return a placeholder that indicates the file type
-      if (file.type === 'application/pdf') {
-        return `PDF document: ${file.name}\n\nNote: PDF text extraction requires integration with a service like AWS Textract, Google Vision, or similar. For now, this is a placeholder.`;
-      }
-      
-      if (file.type.includes('word') || file.type.includes('document')) {
-        return `Word document: ${file.name}\n\nNote: Word document text extraction requires integration with a service. For now, this is a placeholder.`;
-      }
-      
-      // For other file types
-      return `File: ${file.name}\nType: ${file.type}\nSize: ${(file.size / 1024).toFixed(2)} KB\n\nNote: Text extraction for this file type requires additional integration.`;
-      
+      const { processDocumentFile } = await import('@/utils/documentProcessing');
+      return await processDocumentFile(file);
     } catch (error) {
       console.error('Error extracting text from file:', error);
-      return `Error extracting text from ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      return `Error processing ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
     }
   };
 
@@ -359,11 +346,17 @@ export const DocumentManager = () => {
         throw new Error('User not authenticated');
       }
 
-      // Collect all document content
-      const allContent = documents
-        .filter(doc => doc.content_text)
-        .map(doc => `${doc.type.toUpperCase()}: ${doc.content_text}`)
-        .join('\n\n');
+      // Collect all document content with better processing
+      const { createDocumentSummary } = await import('@/utils/documentProcessing');
+      const processedDocs = documents.map(doc => ({
+        id: doc.id,
+        name: doc.name,
+        type: doc.type as 'resume' | 'job_description' | 'supporting_document',
+        content_text: doc.content_text || '',
+        metadata: {}
+      }));
+      
+      const allContent = createDocumentSummary(processedDocs);
 
       // Call the generate-content function for auto-generation
       const { generateDefaultTabs } = await import('@/api/generate-content');
@@ -403,12 +396,12 @@ export const DocumentManager = () => {
     }
   };
 
-  const viewDocument = (document: Document) => {
-    setSelectedDocument(document);
+  const viewDocument = (doc: DocumentType) => {
+    setSelectedDocument(doc);
     setShowDocumentModal(true);
   };
 
-  const downloadDocument = async (document: Document) => {
+  const downloadDocument = async (document: DocumentType) => {
     try {
       const { data, error } = await supabase.storage
         .from('documents')
@@ -418,12 +411,12 @@ export const DocumentManager = () => {
 
       // Create a download link
       const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = document.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.download = document.name;
+      window.document.body.appendChild(link);
+      link.click();
+      window.document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
       toast({

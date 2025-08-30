@@ -315,6 +315,12 @@ async function generateTopicContent(supabase: SupabaseClient, topicId: string, u
     // System prompt for topic content generation
     const systemPrompt = `You are an interview coach for a senior data engineer. Write outputs that are concise, technically credible, and easy to speak aloud. Use simple sentences, minimal filler, and include concrete details (technologies, metrics, architecture). Maintain a confident but humble tone. Avoid buzzword fluff.`;
 
+    // Check if source content is meaningful
+    const hasRealContent = sourceContent && 
+      sourceContent.length > 50 && 
+      !sourceContent.toLowerCase().includes('placeholder') &&
+      !sourceContent.toLowerCase().includes('requires integration');
+
     // User prompt for topic content
     const userPrompt = `GOAL:
 Generate interview preparation content for the topic: "${topicTitle}".
@@ -322,18 +328,34 @@ Generate interview preparation content for the topic: "${topicTitle}".
 SOURCE CONTENT:
 ${sourceContent}
 
+CONTENT GUIDANCE:
+${hasRealContent ? 
+  'Use the specific details from the source content above to create personalized, relevant responses.' : 
+  'Source content is limited. Generate realistic data engineer responses for this topic using industry best practices and common scenarios.'
+}
+
 OUTPUT FORMAT (JSON only):
 {
-  "bullets": [
-    "3–6 bullets; crisp; each 8–18 words; mention specific tech, design choices, metrics"
+  "key_points": [
+    "3-5 specific, actionable bullet points; 10-20 words each; include concrete technologies, metrics, or achievements when possible",
+    "Focus on technical details, business impact, or leadership examples relevant to '${topicTitle}'",
+    "Make each point interview-ready and easy to expand upon"
   ],
-  "script": "A 60–120 second speakable paragraph; simple, confident, first-person; no headings.",
+  "script": "A 60-120 second first-person narrative that tells a story. Start with context, explain the challenge, describe your approach with specific technologies/methods, and mention the impact. Be conversational but technical. Avoid buzzwords - use concrete examples.",
   "cross_questions": [
-    {"q": "Likely follow-up question #1", "a": "Concise but specific answer with concrete examples."},
-    {"q": "Likely follow-up question #2", "a": "…"},
-    {"q": "Likely follow-up question #3", "a": "…"}
+    {"q": "Realistic follow-up question an interviewer would ask about '${topicTitle}'", "a": "Specific, detailed answer with concrete examples. Include technologies, processes, or metrics. Show deep understanding."},
+    {"q": "Technical deep-dive question about implementation details", "a": "Technical answer demonstrating expertise. Mention specific tools, architecture decisions, or problem-solving approaches."},
+    {"q": "Situational question about challenges or trade-offs", "a": "Balanced answer showing critical thinking. Discuss alternatives considered, trade-offs made, and lessons learned."},
+    {"q": "Follow-up about scale, performance, or optimization", "a": "Quantitative answer with metrics, optimization strategies, or scaling approaches used or considered."}
   ]
-}`;
+}
+
+QUALITY STANDARDS:
+- All content should be specific and actionable, not generic
+- Cross-questions should be realistic follow-ups an interviewer would actually ask
+- Answers should demonstrate deep technical knowledge and real-world experience
+- ${hasRealContent ? 'Incorporate details from the source content where relevant' : 'Create believable data engineer scenarios and solutions'}
+- Focus on the data engineering domain: pipelines, databases, cloud platforms, scalability, data quality`;
 
     // Call OpenAI API for content generation with efficient model
     const llmResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -369,7 +391,7 @@ OUTPUT FORMAT (JSON only):
       return;
     }
 
-    const { bullets, script, cross_questions } = parsedContent;
+    const { key_points, script, cross_questions } = parsedContent;
 
     // Save content to database
     const { data: version, error: insertError } = await supabase
@@ -378,10 +400,10 @@ OUTPUT FORMAT (JSON only):
         topic_id: topicId,
         user_id: userId,
         source_notes: sourceContent,
-        bullets: bullets || [],
+        bullets: key_points || [],
         script: script || '',
         cross_questions: cross_questions || [],
-        meta: {}
+        meta: { generated: true }
       }])
       .select()
       .single();
@@ -414,46 +436,71 @@ async function handleAutoGenerateTopicsAndContent(supabase: SupabaseClient, user
     // System prompt for document-based topic generation
     const systemPrompt = `You are an expert interview preparation coach for data engineers. Analyze the uploaded documents (resume, job description, supporting documents) and automatically generate personalized interview topics with comprehensive content.`;
 
+    // Analyze the documents for better content quality
+    const hasValidContent = documents.some(doc => 
+      doc.content && 
+      doc.content.length > 50 && 
+      !doc.content.toLowerCase().includes('placeholder') &&
+      !doc.content.toLowerCase().includes('requires integration')
+    );
+
     // User prompt for document analysis and topic generation
     const userPrompt = `GOAL:
 Analyze the uploaded documents and automatically generate personalized interview topics with complete content for a data engineer interview.
 
 DOCUMENTS TO ANALYZE:
-${documents.map(doc => `${doc.type.toUpperCase()}: ${doc.name}\nContent: ${doc.content}`).join('\n\n')}
+${documents.map(doc => {
+  const contentPreview = doc.content ? 
+    (doc.content.length > 1000 ? doc.content.substring(0, 1000) + '...' : doc.content) : 
+    `Document type: ${doc.type}, Name: ${doc.name}`;
+  return `${doc.type.toUpperCase()}: ${doc.name}\nContent: ${contentPreview}`;
+}).join('\n\n')}
+
+CONTENT QUALITY NOTE: 
+${hasValidContent ? 
+  'Full document content is available - use specific details, skills, projects, and requirements mentioned.' : 
+  'Document content extraction is limited - focus on document types and create relevant data engineer topics based on standard expectations for resumes, job descriptions, and supporting documents.'
+}
 
 REQUIREMENTS:
-1. Analyze the resume for skills, experience, and projects
-2. Analyze the job description for requirements and responsibilities
-3. Create 6-8 relevant topics that combine both sources
-4. Each topic should include:
-   - Key points (3-5 bullet points)
-   - Speaking script (60-120 seconds)
-   - Cross questions & answers (3-4 Q&A pairs)
-5. Topics should be personalized based on the actual content
-6. Include technical topics from the resume/job description
-7. Include behavioral topics relevant to the experience level
+1. ${hasValidContent ? 'Extract specific skills, technologies, projects, and experience from the actual resume content' : 'Generate relevant data engineer skills and experience topics based on the resume document type'}
+2. ${hasValidContent ? 'Extract specific requirements, technologies, and responsibilities from the job description content' : 'Generate relevant data engineer job requirements topics based on the job description document type'}
+3. Create 6-8 highly relevant topics that combine resume experience with job requirements
+4. Each topic MUST include:
+   - Key points (3-5 specific, actionable bullet points)
+   - Speaking script (60-120 second first-person narrative)
+   - Cross questions & answers (3-4 realistic follow-up Q&A pairs)
+5. Topics should be deeply personalized ${hasValidContent ? 'using the actual document content' : 'based on data engineer role expectations'}
+6. Include technical topics covering: data pipelines, databases, cloud platforms, programming languages
+7. Include behavioral topics: leadership, problem-solving, collaboration, project management
+8. Ensure cross-questions are realistic follow-ups an interviewer would actually ask
 
 OUTPUT FORMAT (JSON only):
 {
   "topics": [
     {
-      "title": "Topic Title",
-      "slug": "topic-slug",
+      "title": "Specific Topic Title (e.g., 'Building Scalable Data Pipelines with Apache Spark')",
+      "slug": "building-scalable-data-pipelines-with-apache-spark",
       "category": "Technical|Behavioral|Projects|Architecture|Leadership",
-      "icon_name": "appropriate-icon-name",
+      "icon_name": "database|code|users|layers|target|briefcase|chart|settings",
       "color": "blue|green|red|yellow|purple|orange|pink|indigo",
       "sort_order": 1,
-      "key_points": ["Key point 1", "Key point 2", "Key point 3"],
-      "speaking_script": "A 60-120 second speakable paragraph...",
+      "key_points": [
+        "Specific technical achievement with metrics (e.g., 'Built real-time data pipeline processing 10TB daily using Spark and Kafka')",
+        "Technology stack and architecture decisions (e.g., 'Implemented Delta Lake for ACID transactions and time travel queries')",
+        "Problem solved and business impact (e.g., 'Reduced data processing latency from 4 hours to 15 minutes, enabling real-time analytics')"
+      ],
+      "speaking_script": "Start with context, then explain the technical challenge, describe your solution with specific technologies, mention the impact. Use first-person, be conversational but technical. Example: 'At my previous company, we were struggling with...'",
       "cross_questions": [
-        {"q": "Question 1", "a": "Answer 1"},
-        {"q": "Question 2", "a": "Answer 2"}
+        {"q": "How did you handle schema evolution in your data pipeline?", "a": "Specific answer with technical details about schema registry, backward compatibility strategies, or versioning approaches used."},
+        {"q": "What monitoring and alerting did you implement?", "a": "Detailed answer about specific monitoring tools, metrics tracked, alerting strategies, and incident response procedures."},
+        {"q": "How did you ensure data quality and handle bad data?", "a": "Concrete examples of data validation rules, error handling strategies, dead letter queues, and data quality monitoring implemented."}
       ]
     }
   ]
 }
 
-Make these topics highly personalized and relevant to the specific documents provided.`;
+CRITICAL: Generate topics that are specific, actionable, and interview-ready. Avoid generic content. ${hasValidContent ? 'Use the actual document content to create personalized topics.' : 'Create realistic data engineer scenarios even without full document content.'}`;
 
     // Call OpenAI API with powerful model for comprehensive generation
     const llmResponse = await fetch('https://api.openai.com/v1/chat/completions', {
