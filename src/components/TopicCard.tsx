@@ -66,55 +66,54 @@ export const TopicCard = ({
     <Card 
       className={cn(
         "group relative cursor-pointer transition-all duration-300 hover:shadow-lg hover:scale-[1.02]",
-        "border-0 bg-card/80 backdrop-blur-sm",
+        "border-0 bg-card/80 backdrop-blur-sm w-[150px] h-[150px]",
         className
       )}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onClick={() => onClick(topic)}
     >
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div className={cn(
-              "flex items-center justify-center w-10 h-10 rounded-lg transition-colors",
-              `bg-${colorClass}/10 text-${colorClass}`
-            )}>
-              <IconComponent className="w-5 h-5" />
-            </div>
-            
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">
-                {topic.title}
-              </h3>
-              <div className="flex items-center gap-2 mt-1">
-                <Badge variant="secondary" className="text-xs">
-                  {topic.category}
-                </Badge>
-                {hasContent && (
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {onEdit && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "opacity-0 group-hover:opacity-100 transition-opacity",
-                isHovered && "opacity-100"
-              )}
-              onClick={(e) => {
-                e.stopPropagation();
-                onEdit(topic);
-              }}
-            >
-              <Edit2 className="w-4 h-4" />
-            </Button>
-          )}
+      <CardContent className="p-4 h-full flex flex-col items-center justify-center text-center">
+        {/* Icon centered at top */}
+        <div className={cn(
+          "flex items-center justify-center w-12 h-12 rounded-lg transition-colors mb-3",
+          `bg-${colorClass}/10 text-${colorClass}`
+        )}>
+          <IconComponent className="w-6 h-6" />
         </div>
+        
+        {/* Title below icon */}
+        <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors text-sm leading-tight mb-2">
+          {topic.title}
+        </h3>
+        
+        {/* Category badge */}
+        <Badge variant="secondary" className="text-xs">
+          {topic.category}
+        </Badge>
+        
+        {/* Content indicator */}
+        {hasContent && (
+          <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-green-500"></div>
+        )}
+        
+        {/* Edit button - appears on hover */}
+        {onEdit && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity w-6 h-6 p-0",
+              isHovered && "opacity-100"
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(topic);
+            }}
+          >
+            <Edit2 className="w-3 h-3" />
+          </Button>
+        )}
       </CardContent>
     </Card>
   );

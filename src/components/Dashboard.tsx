@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { TopicCard } from './TopicCard';
 import { ContentViewer } from './ContentViewer';
 import { ContentEditor } from './ContentEditor';
+import { DocumentManager } from './DocumentManager';
 import { 
   Search, Plus, LogOut, User, Settings,
-  Filter, Grid, List
+  Filter, Grid, List, FileText, Sparkles,
+  X, Loader2
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -38,40 +41,20 @@ export const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showEditor, setShowEditor] = useState(false);
+  const [showDocumentManager, setShowDocumentManager] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  // Custom topic creation state
+  const [showCustomTopicModal, setShowCustomTopicModal] = useState(false);
+  const [customTopicTitle, setCustomTopicTitle] = useState('');
+  const [customTopicCategory, setCustomTopicCategory] = useState('');
+  const [customTopicSourceNotes, setCustomTopicSourceNotes] = useState('');
+  const [isCreatingCustomTopic, setIsCreatingCustomTopic] = useState(false);
+  
   const { toast } = useToast();
 
-  // Load topics on mount
-  useEffect(() => {
-    loadTopics();
-  }, []);
-
-  // Create default topics for new users
-  useEffect(() => {
-    const createDefaultTopicsIfNeeded = async () => {
-      try {
-        const { data: existingTopics } = await supabase
-          .from('topics')
-          .select('id')
-          .limit(1);
-        
-        if (!existingTopics || existingTopics.length === 0) {
-          const { createDefaultTopics } = await import('@/utils/defaultTopics');
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            await createDefaultTopics(user.id);
-            loadTopics(); // Reload topics after creation
-          }
-        }
-      } catch (error) {
-        console.error('Error setting up default topics:', error);
-      }
-    };
-    
-    createDefaultTopicsIfNeeded();
-  }, []);
-
-  const loadTopics = async () => {
+  const loadTopics = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('topics')
@@ -94,7 +77,69 @@ export const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  // Check authentication and load topics on mount
+  useEffect(() => {
+    const checkAuthAndLoad = async () => {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) {
+          setIsAuthenticated(false);
+          setLoading(false);
+          return;
+        }
+        
+        setIsAuthenticated(true);
+        await loadTopics();
+      } catch (error) {
+        console.error('Auth check error:', error);
+        setIsAuthenticated(false);
+        setLoading(false);
+      }
+    };
+    
+    checkAuthAndLoad();
+  }, [loadTopics]);
+
+  // Create default topics for new users using AI
+  useEffect(() => {
+    const createDefaultTopicsIfNeeded = async () => {
+      try {
+        const { data: existingTopics } = await supabase
+          .from('topics')
+          .select('id')
+          .limit(1);
+        
+        if (!existingTopics || existingTopics.length === 0) {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            // Use AI to generate default topics instead of static ones
+            const { generateDefaultTabs } = await import('@/api/generate-content');
+            const result = await generateDefaultTabs({
+              action: 'generate_default_tabs',
+              userId: user.id,
+              content: 'Default interview preparation content',
+              documents: []
+            });
+            
+            if (result.success) {
+              console.log('Default AI-generated topics created successfully');
+              loadTopics(); // Reload topics after creation
+            } else {
+              console.error('Failed to create default topics:', result.error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error setting up default topics:', error);
+      }
+    };
+    
+    createDefaultTopicsIfNeeded();
+  }, [loadTopics]);
+
+
 
   const loadTopicContent = async (topic: Topic) => {
     try {
@@ -167,10 +212,88 @@ export const Dashboard = () => {
     return acc;
   }, {} as Record<string, Topic[]>);
 
+  const createCustomTopic = async () => {
+    if (!customTopicTitle.trim() || !customTopicCategory || !customTopicSourceNotes.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsCreatingCustomTopic(true);
+
+    try {
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        throw new Error('User not authenticated');
+      }
+
+      // Call the Edge Function to create custom topic
+      const { generateContent } = await import('@/api/generate-content');
+      const result = await generateContent({
+        action: 'create_custom_topic',
+        topicTitle: customTopicTitle,
+        sourceNotes: customTopicSourceNotes,
+        category: customTopicCategory,
+        userId: user.id
+      });
+
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Custom topic created successfully!"
+        });
+        
+        // Reset form and close modal
+        setCustomTopicTitle('');
+        setCustomTopicCategory('');
+        setCustomTopicSourceNotes('');
+        setShowCustomTopicModal(false);
+        
+        // Reload topics to show the new one
+        await loadTopics();
+      } else {
+        throw new Error(result.error || 'Failed to create custom topic');
+      }
+    } catch (error) {
+      console.error('Error creating custom topic:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create custom topic",
+        variant: "destructive"
+      });
+    } finally {
+      setIsCreatingCustomTopic(false);
+    }
+  };
+
+  const openCustomTopicModal = (category: string) => {
+    setCustomTopicCategory(category);
+    setShowCustomTopicModal(true);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-pulse">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Authentication Required</h2>
+          <p className="text-muted-foreground mb-4">
+            Please sign in to access the Interview Preparation Dashboard.
+          </p>
+          <Button onClick={() => window.location.href = '/'}>
+            Go to Sign In
+          </Button>
+        </div>
       </div>
     );
   }
@@ -211,6 +334,15 @@ export const Dashboard = () => {
             <Button 
               variant="secondary" 
               size="sm"
+              onClick={() => setShowDocumentManager(!showDocumentManager)}
+              className="gap-2"
+            >
+              <FileText className="w-4 h-4" />
+              {showDocumentManager ? 'Hide Documents' : 'Manage Documents'}
+            </Button>
+            <Button 
+              variant="secondary" 
+              size="sm"
               onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
             >
               {viewMode === 'grid' ? <List className="w-4 h-4" /> : <Grid className="w-4 h-4" />}
@@ -220,15 +352,33 @@ export const Dashboard = () => {
       </header>
 
       <div className="container mx-auto px-6 py-8">
+        {/* Document Manager Section */}
+        {showDocumentManager && (
+          <div className="mb-8">
+            <DocumentManager />
+          </div>
+        )}
+
         <div className="grid lg:grid-cols-3 gap-8">
-          {/* Topics Sidebar */}
+          {/* Topics Grid */}
           <div className="lg:col-span-1 space-y-6">
             {Object.entries(groupedTopics).map(([category, categoryTopics]) => (
-              <div key={category} className="space-y-3">
-                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
-                  {category}
-                </h3>
-                <div className="space-y-2">
+              <div key={category} className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
+                    {category}
+                  </h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => openCustomTopicModal(category)}
+                    className="h-8 w-8 p-0 rounded-full hover:bg-muted"
+                    title={`Add custom ${category.toLowerCase()} topic`}
+                  >
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3">
                   {categoryTopics.map((topic) => (
                     <TopicCard
                       key={topic.id}
@@ -259,6 +409,34 @@ export const Dashboard = () => {
                     });
                   }}
                   onCancel={() => setShowEditor(false)}
+                  onTopicRename={async (newTitle) => {
+                    try {
+                      const { error } = await supabase
+                        .from('topics')
+                        .update({ title: newTitle })
+                        .eq('id', selectedTopic.id);
+                      
+                      if (error) throw error;
+                      
+                      // Update local state
+                      setSelectedTopic({ ...selectedTopic, title: newTitle });
+                      setTopics(topics.map(t => 
+                        t.id === selectedTopic.id ? { ...t, title: newTitle } : t
+                      ));
+                      
+                      toast({
+                        title: "Success",
+                        description: "Topic renamed successfully!"
+                      });
+                    } catch (error) {
+                      console.error('Error renaming topic:', error);
+                      toast({
+                        title: "Error",
+                        description: "Failed to rename topic",
+                        variant: "destructive"
+                      });
+                    }
+                  }}
                 />
               ) : (
                 <ContentViewer
@@ -299,6 +477,92 @@ export const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Custom Topic Creation Modal */}
+      {showCustomTopicModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-background rounded-lg max-w-md w-full max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between p-6 border-b">
+              <h3 className="text-lg font-semibold">Create Custom Topic</h3>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowCustomTopicModal(false)}
+                disabled={isCreatingCustomTopic}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Topic Title</label>
+                <Input
+                  placeholder="e.g., Machine Learning Projects"
+                  value={customTopicTitle}
+                  onChange={(e) => setCustomTopicTitle(e.target.value)}
+                  disabled={isCreatingCustomTopic}
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-2">Category</label>
+                <select
+                  value={customTopicCategory}
+                  onChange={(e) => setCustomTopicCategory(e.target.value)}
+                  disabled={isCreatingCustomTopic}
+                  className="w-full p-2 border rounded-md"
+                >
+                  <option value="">Select category...</option>
+                  <option value="Technical">Technical</option>
+                  <option value="Behavioral">Behavioral</option>
+                  <option value="Projects">Projects</option>
+                  <option value="Leadership">Leadership</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-2">Source Notes</label>
+                <Textarea
+                  placeholder="Describe your experience, projects, or skills related to this topic..."
+                  value={customTopicSourceNotes}
+                  onChange={(e) => setCustomTopicSourceNotes(e.target.value)}
+                  rows={4}
+                  disabled={isCreatingCustomTopic}
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 p-6 border-t">
+              <Button
+                variant="outline"
+                onClick={() => setShowCustomTopicModal(false)}
+                disabled={isCreatingCustomTopic}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={createCustomTopic}
+                disabled={isCreatingCustomTopic || !customTopicTitle.trim() || !customTopicCategory || !customTopicSourceNotes.trim()}
+                className="flex-1 gap-2"
+              >
+                {isCreatingCustomTopic ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4" />
+                    Generate Content
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

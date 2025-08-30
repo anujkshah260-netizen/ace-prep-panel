@@ -52,6 +52,33 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
     return `${minutes} min read`;
   };
 
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const dateStr = date.toLocaleDateString();
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `Updated ${dateStr} at ${timeStr}`;
+  };
+
+  const highlightKeywords = (text: string) => {
+    // Common technical keywords to highlight
+    const keywords = [
+      'Python', 'SQL', 'Apache Spark', 'Apache Kafka', 'AWS', 'GCP', 'Azure',
+      'Data Pipeline', 'ETL', 'Data Warehouse', 'Machine Learning', 'Big Data',
+      'Real-time', 'Streaming', 'Batch Processing', 'Data Modeling', 'Architecture',
+      'Performance', 'Scalability', 'Monitoring', 'Testing', 'Deployment',
+      'Team Leadership', 'Project Management', 'Stakeholder', 'Communication'
+    ];
+    
+    let highlightedText = text;
+    keywords.forEach(keyword => {
+      const regex = new RegExp(`\\b${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+      highlightedText = highlightedText.replace(regex, `**${keyword}**`);
+    });
+    
+    // Convert markdown bold to HTML
+    return highlightedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  };
+
   if (!content) {
     return (
       <Card className="border-dashed">
@@ -79,7 +106,7 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
           <div className="flex items-center gap-2 mt-2">
             <Badge variant="secondary">{topic.category}</Badge>
             <span className="text-sm text-muted-foreground">
-              Updated {new Date(content.created_at).toLocaleDateString()}
+              {formatDateTime(content.created_at)}
             </span>
             {content.is_favorite && (
               <Star className="w-4 h-4 text-yellow-500 fill-current" />
@@ -117,7 +144,10 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
             {content.bullets.map((bullet, index) => (
               <li key={index} className="flex items-start gap-3">
                 <div className="w-2 h-2 rounded-full bg-primary mt-2 flex-shrink-0" />
-                <span className="text-foreground leading-relaxed">{bullet}</span>
+                <span 
+                  className="text-foreground leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: highlightKeywords(bullet) }}
+                />
               </li>
             ))}
           </ul>
@@ -149,9 +179,10 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
         </CardHeader>
         <CardContent>
           <div className="prose prose-sm max-w-none">
-            <p className="leading-relaxed whitespace-pre-wrap text-foreground">
-              {content.script}
-            </p>
+            <div 
+              className="leading-relaxed whitespace-pre-wrap text-foreground"
+              dangerouslySetInnerHTML={{ __html: highlightKeywords(content.script) }}
+            />
           </div>
         </CardContent>
       </Card>
@@ -169,10 +200,12 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
             {content.cross_questions.map((qa, index) => (
               <div key={index} className="space-y-2">
                 <div className="font-medium text-foreground">
-                  <span className="text-primary">Q{index + 1}:</span> {qa.q}
+                  <span className="text-primary">Q{index + 1}:</span> 
+                  <span dangerouslySetInnerHTML={{ __html: highlightKeywords(qa.q) }} />
                 </div>
                 <div className="text-muted-foreground leading-relaxed pl-6">
-                  <strong>A:</strong> {qa.a}
+                  <strong>A:</strong> 
+                  <span dangerouslySetInnerHTML={{ __html: highlightKeywords(qa.a) }} />
                 </div>
                 {index < content.cross_questions.length - 1 && (
                   <Separator className="my-4" />

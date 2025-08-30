@@ -132,8 +132,11 @@ export type Database = {
           icon_name: string | null
           id: string
           is_active: boolean | null
+          is_ai_generated: boolean | null
+          session_id: string | null
           slug: string
           sort_order: number | null
+          source_documents: Json | null
           title: string
           updated_at: string | null
           user_id: string
@@ -145,8 +148,11 @@ export type Database = {
           icon_name?: string | null
           id?: string
           is_active?: boolean | null
+          is_ai_generated?: boolean | null
+          session_id?: string | null
           slug: string
           sort_order?: number | null
+          source_documents?: Json | null
           title: string
           updated_at?: string | null
           user_id: string
@@ -158,13 +164,126 @@ export type Database = {
           icon_name?: string | null
           id?: string
           is_active?: boolean | null
+          is_ai_generated?: boolean | null
+          session_id?: string | null
           slug?: string
           sort_order?: number | null
+          source_documents?: Json | null
           title?: string
           updated_at?: string | null
           user_id?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: "topics_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "document_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      documents: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          type: string
+          file_path: string
+          file_size: number | null
+          content_text: string | null
+          metadata: Json | null
+          is_active: boolean | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          type: string
+          file_path: string
+          file_size?: number | null
+          content_text?: string | null
+          metadata?: Json | null
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          type?: string
+          file_path?: string
+          file_size?: number | null
+          content_text?: string | null
+          metadata?: Json | null
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
         Relationships: []
+      }
+      document_sessions: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          description: string | null
+          is_active: boolean | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          name: string
+          description?: string | null
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          description?: string | null
+          is_active?: boolean | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      session_documents: {
+        Row: {
+          session_id: string
+          document_id: string
+        }
+        Insert: {
+          session_id: string
+          document_id: string
+        }
+        Update: {
+          session_id?: string
+          document_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "session_documents_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "document_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "session_documents_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

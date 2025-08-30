@@ -21,16 +21,78 @@ FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Users can insert own profile" ON public.profiles
 FOR INSERT WITH CHECK (auth.uid() = id);
 
+-- Create documents table for resume, JD, and supporting documents
+CREATE TABLE public.documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('resume', 'job_description', 'supporting_document')),
+  file_path TEXT NOT NULL,
+  file_size INTEGER,
+  content_text TEXT, -- Extracted text content
+  metadata JSONB DEFAULT '{}',
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Enable RLS on documents
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for documents
+CREATE POLICY "Users can manage own documents" ON public.documents
+FOR ALL USING (auth.uid() = user_id);
+
+-- Create document_sessions table to group documents for a specific interview prep session
+CREATE TABLE public.document_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Enable RLS on document_sessions
+ALTER TABLE public.document_sessions ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for document_sessions
+CREATE POLICY "Users can manage own document sessions" ON public.document_sessions
+FOR ALL USING (auth.uid() = user_id);
+
+-- Create session_documents junction table
+CREATE TABLE public.session_documents (
+  session_id UUID NOT NULL REFERENCES public.document_sessions(id) ON DELETE CASCADE,
+  document_id UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+  PRIMARY KEY (session_id, document_id)
+);
+
+-- Enable RLS on session_documents
+ALTER TABLE public.session_documents ENABLE ROW LEVEL SECURITY;
+
+-- Create policies for session_documents
+CREATE POLICY "Users can manage own session documents" ON public.session_documents
+FOR ALL USING (
+  EXISTS (
+    SELECT 1 FROM public.document_sessions 
+    WHERE id = session_id AND user_id = auth.uid()
+  )
+);
+
 -- Create topics table (the categories like Kafka, AWS, etc.)
 CREATE TABLE public.topics (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  session_id UUID REFERENCES public.document_sessions(id) ON DELETE SET NULL,
   title TEXT NOT NULL,
   slug TEXT NOT NULL,
   category TEXT DEFAULT 'Technical',
   icon_name TEXT DEFAULT 'code',
   color TEXT DEFAULT 'blue',
   sort_order INTEGER DEFAULT 0,
+  is_ai_generated BOOLEAN DEFAULT false,
+  source_documents JSONB DEFAULT '[]', -- Array of document IDs that contributed to this topic
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
@@ -119,6 +181,16 @@ CREATE TRIGGER update_topics_updated_at
 
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_documents_updated_at
+  BEFORE UPDATE ON public.documents
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_updated_at_column();
+
+CREATE TRIGGER update_document_sessions_updated_at
+  BEFORE UPDATE ON public.document_sessions
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
 

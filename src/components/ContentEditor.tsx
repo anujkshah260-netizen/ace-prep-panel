@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { 
   Save, Loader2, Sparkles, ArrowLeft,
-  FileText, Wand2
+  FileText, Wand2, Edit2
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
@@ -31,18 +31,31 @@ interface ContentEditorProps {
   currentContent: ContentVersion | null;
   onContentSaved: (content: ContentVersion) => void;
   onCancel: () => void;
+  onTopicRename?: (newTitle: string) => void;
 }
 
 export const ContentEditor = ({ 
   topic, 
   currentContent, 
   onContentSaved, 
-  onCancel 
+  onCancel,
+  onTopicRename
 }: ContentEditorProps) => {
   const [sourceNotes, setSourceNotes] = useState(
     currentContent?.source_notes || ''
   );
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedTitle, setEditedTitle] = useState(topic.title);
+  const [editedBullets, setEditedBullets] = useState<string[]>(
+    currentContent?.bullets || []
+  );
+  const [editedScript, setEditedScript] = useState(
+    currentContent?.script || ''
+  );
+  const [editedCrossQuestions, setEditedCrossQuestions] = useState<Array<{ q: string; a: string; }>>(
+    currentContent?.cross_questions || []
+  );
   const { toast } = useToast();
 
   const handleGenerate = async () => {
@@ -114,10 +127,56 @@ export const ContentEditor = ({
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">
-            {currentContent ? 'Edit' : 'Create'} Content
-          </h2>
+        <div className="flex-1">
+          {isEditing ? (
+            <div className="flex items-center gap-3">
+              <input
+                type="text"
+                value={editedTitle}
+                onChange={(e) => setEditedTitle(e.target.value)}
+                className="text-2xl font-bold bg-transparent border-b-2 border-primary/30 focus:border-primary focus:outline-none px-2 py-1"
+                placeholder="Enter topic title..."
+              />
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (onTopicRename && editedTitle.trim() !== topic.title) {
+                    onTopicRename(editedTitle.trim());
+                  }
+                  setIsEditing(false);
+                }}
+                className="gap-1"
+              >
+                <Save className="w-3 h-3" />
+                Save
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditedTitle(topic.title);
+                  setIsEditing(false);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold">
+                {currentContent ? 'Edit' : 'Create'} Content
+              </h2>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setIsEditing(true)}
+                className="gap-1"
+              >
+                <Edit2 className="w-4 h-4" />
+                Rename
+              </Button>
+            </div>
+          )}
           <p className="text-muted-foreground mt-1">
             Generate AI-powered content for <strong>{topic.title}</strong>
           </p>
@@ -204,6 +263,258 @@ Paste any notes, experiences, or key points you want to discuss...`}
           </div>
         </CardContent>
       </Card>
+
+      {/* Current Content Display/Edit */}
+      {currentContent && (
+        <div className="space-y-6">
+          {/* Key Bullets */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Key Bullets</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsEditing(!isEditing)}
+                  className="gap-1"
+                >
+                  {isEditing ? 'View' : 'Edit'}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isEditing ? (
+                <div className="space-y-2">
+                  {editedBullets.map((bullet, index) => (
+                    <div key={index} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={bullet}
+                        onChange={(e) => {
+                          const newBullets = [...editedBullets];
+                          newBullets[index] = e.target.value;
+                          setEditedBullets(newBullets);
+                        }}
+                        className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        placeholder="Enter bullet point..."
+                      />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditedBullets(editedBullets.filter((_, i) => i !== index));
+                        }}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditedBullets([...editedBullets, ''])}
+                    className="gap-1"
+                  >
+                    + Add Bullet
+                  </Button>
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {currentContent.bullets.map((bullet, index) => (
+                    <li key={index} className="flex items-start gap-2">
+                      <span className="text-primary font-semibold">•</span>
+                      <span>{bullet}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Speaking Script */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Speaking Script</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsEditing(!isEditing)}
+                  className="gap-1"
+                >
+                  {isEditing ? 'View' : 'Edit'}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isEditing ? (
+                <Textarea
+                  value={editedScript}
+                  onChange={(e) => setEditedScript(e.target.value)}
+                  rows={4}
+                  className="resize-none"
+                  placeholder="Enter your speaking script..."
+                />
+              ) : (
+                <p className="text-muted-foreground leading-relaxed">
+                  {currentContent.script}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Cross Questions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>Cross Questions & Answers</span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsEditing(!isEditing)}
+                  className="gap-1"
+                >
+                  {isEditing ? 'View' : 'Edit'}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {isEditing ? (
+                <div className="space-y-4">
+                  {editedCrossQuestions.map((qa, index) => (
+                    <div key={index} className="space-y-2 p-3 border rounded-lg">
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={qa.q}
+                          onChange={(e) => {
+                            const newQAs = [...editedCrossQuestions];
+                            newQAs[index].q = e.target.value;
+                            setEditedCrossQuestions(newQAs);
+                          }}
+                          className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20"
+                          placeholder="Question..."
+                        />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditedCrossQuestions(editedCrossQuestions.filter((_, i) => i !== index));
+                          }}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          ×
+                        </Button>
+                      </div>
+                      <Textarea
+                        value={qa.a}
+                        onChange={(e) => {
+                          const newQAs = [...editedCrossQuestions];
+                          newQAs[index].a = e.target.value;
+                          setEditedCrossQuestions(newQAs);
+                        }}
+                        rows={2}
+                        className="resize-none"
+                        placeholder="Answer..."
+                      />
+                    </div>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditedCrossQuestions([...editedCrossQuestions, { q: '', a: '' }])}
+                    className="gap-1"
+                  >
+                    + Add Q&A
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {currentContent.cross_questions.map((qa, index) => (
+                    <div key={index} className="p-3 border rounded-lg">
+                      <p className="font-semibold text-primary mb-2">Q: {qa.q}</p>
+                      <p className="text-muted-foreground">A: {qa.a}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Save Changes Button */}
+          {isEditing && (
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setEditedBullets(currentContent.bullets);
+                  setEditedScript(currentContent.script);
+                  setEditedCrossQuestions(currentContent.cross_questions);
+                  setIsEditing(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  // Save changes to database
+                  const updatedContent = {
+                    ...currentContent,
+                    bullets: editedBullets,
+                    script: editedScript,
+                    cross_questions: editedCrossQuestions
+                  };
+                  onContentSaved(updatedContent);
+                  setIsEditing(false);
+                  toast({
+                    title: "Changes Saved",
+                    description: "Your content has been updated successfully!"
+                  });
+                }}
+                className="gap-2"
+              >
+                <Save className="w-4 h-4" />
+                Save Changes
+              </Button>
+            </div>
+          )}
+
+          {/* Improve with AI Button */}
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-primary mt-0.5" />
+                  <div>
+                    <h3 className="font-semibold text-primary">Improve with AI</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Use AI to enhance your current content based on your edits
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleGenerate}
+                  disabled={isGenerating}
+                  className="gap-2"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Improving...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-4 h-4" />
+                      Improve with AI
+                    </>
+                )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Tips */}
       <Card className="border-dashed">
