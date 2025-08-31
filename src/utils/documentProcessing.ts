@@ -11,47 +11,49 @@ export interface ProcessedDocument {
 // Enhanced PDF text extraction using pdf-parse
 export const extractPDFText = async (file: File): Promise<string> => {
   try {
-    // Import pdf-parse dynamically since it's a Node.js library
-    // We'll use a simple approach for now and enhance later
+    const pdfParse = await import('pdf-parse');
     const arrayBuffer = await file.arrayBuffer();
+    const data = await pdfParse.default(arrayBuffer);
     
-    // For now, return a placeholder with file info
-    // TODO: Implement proper PDF parsing with a service or library compatible with browsers
-    return `PDF Document: ${file.name}
+    if (data.text && data.text.trim().length > 0) {
+      return data.text;
+    } else {
+      return `PDF Document: ${file.name}
 Size: ${Math.round(file.size / 1024)} KB
-Pages: [PDF content extraction in progress]
+Pages: ${data.numpages || 'Unknown'}
 
-Note: This PDF has been uploaded but full text extraction requires server-side processing. 
-The AI will work with the filename and document type information for now.
-
-To enable full PDF text extraction, integrate with:
-- AWS Textract
-- Google Document AI
-- Or a server-side PDF parsing service`;
+Note: PDF was processed but no readable text was found. This might be a scanned document or image-based PDF.`;
+    }
   } catch (error) {
     console.error('Error extracting PDF text:', error);
-    return `PDF Document: ${file.name} - Error extracting content`;
+    return `PDF Document: ${file.name}
+Size: ${Math.round(file.size / 1024)} KB
+
+Note: Error extracting PDF content. The file may be corrupted or require advanced processing.`;
   }
 };
 
 // Enhanced Word document extraction
 export const extractWordText = async (file: File): Promise<string> => {
   try {
-    // Simple text extraction for Word documents
-    // TODO: Implement proper Word document parsing
+    const mammoth = await import('mammoth');
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    
+    if (result.value && result.value.trim().length > 0) {
+      return result.value;
+    } else {
+      return `Word Document: ${file.name}
+Size: ${Math.round(file.size / 1024)} KB
+
+Note: Word document was processed but no readable text was found.`;
+    }
+  } catch (error) {
+    console.error('Error extracting Word text:', error);
     return `Word Document: ${file.name}
 Size: ${Math.round(file.size / 1024)} KB
 
-Note: This Word document has been uploaded but requires server-side processing for full text extraction.
-The AI will work with the filename and document type information.
-
-To enable full Word document text extraction, integrate with:
-- mammoth.js for browser-based extraction
-- Server-side document processing service
-- Google Document AI`;
-  } catch (error) {
-    console.error('Error extracting Word text:', error);
-    return `Word Document: ${file.name} - Error extracting content`;
+Note: Error extracting Word document content. The file may be corrupted or in an unsupported format.`;
   }
 };
 
@@ -111,12 +113,15 @@ export const validateDocumentContent = (content: string, fileName: string): {
     return { isValid: false, reason: 'Empty content' };
   }
   
-  if (content.trim().length < 10) {
+  if (content.trim().length < 50) {
     return { isValid: false, reason: 'Content too short' };
   }
   
-  // Check if it's mostly placeholder text
-  const placeholderKeywords = ['placeholder', 'note:', 'requires integration', 'error extracting'];
+  // Check if it's mostly placeholder text or error messages
+  const placeholderKeywords = [
+    'note:', 'requires integration', 'error extracting', 'no readable text',
+    'corrupted', 'advanced processing', 'server-side processing'
+  ];
   const hasPlaceholderText = placeholderKeywords.some(keyword => 
     content.toLowerCase().includes(keyword)
   );
@@ -124,7 +129,23 @@ export const validateDocumentContent = (content: string, fileName: string): {
   if (hasPlaceholderText) {
     return { 
       isValid: false, 
-      reason: 'Document content not properly extracted - using filename and type only' 
+      reason: 'Document content not properly extracted - text extraction failed' 
+    };
+  }
+  
+  // Check for meaningful content indicators
+  const meaningfulIndicators = [
+    'experience', 'skills', 'education', 'work', 'project', 'responsibility',
+    'requirements', 'qualifications', 'role', 'position', 'company'
+  ];
+  const hasMeaningfulContent = meaningfulIndicators.some(indicator =>
+    content.toLowerCase().includes(indicator)
+  );
+  
+  if (!hasMeaningfulContent && content.length < 200) {
+    return {
+      isValid: false,
+      reason: 'Document content appears generic - may need manual review'
     };
   }
   

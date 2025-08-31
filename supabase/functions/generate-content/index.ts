@@ -7,8 +7,8 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 // Model selection strategy
-const POWERFUL_MODEL = 'gpt-4o';        // For initial generation (best quality)
-const EFFICIENT_MODEL = 'gpt-4o-mini';  // For content editing (cost-effective)
+const POWERFUL_MODEL = 'gpt-5-2025-08-07';        // For initial generation (best quality)
+const EFFICIENT_MODEL = 'gpt-5-mini-2025-08-07';  // For content editing (cost-effective)
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,9 +17,9 @@ const corsHeaders = {
 
 // Define proper types for Supabase client
 interface SupabaseClient {
-  from: (table: string) => {
-    insert: (data: unknown[]) => Promise<{ data: unknown; error: unknown }>;
-    select: (columns: string) => Promise<{ data: unknown; error: unknown }>;
+  from: (table: string) => any;
+  auth: {
+    getUser: () => Promise<{ data: { user: any }; error: any }>;
   };
 }
 
@@ -81,8 +81,7 @@ Make these topics specific and actionable for data engineers.`;
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.3,
-        max_tokens: 3000
+        max_completion_tokens: 3000
       }),
     });
 
@@ -124,12 +123,6 @@ Make these topics specific and actionable for data engineers.`;
           icon_name: topic.icon_name,
           color: topic.color,
           sort_order: topic.sort_order,
-          is_ai_generated: true,
-          source_documents: [],
-          meta: {
-            description: topic.description,
-            key_points: topic.key_points
-          }
         }])
         .select()
         .single();
@@ -224,8 +217,7 @@ Make topics specific to the technologies, projects, and experiences mentioned in
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.3,
-        max_tokens: 3000
+        max_completion_tokens: 3000
       }),
     });
 
@@ -261,19 +253,12 @@ Make topics specific to the technologies, projects, and experiences mentioned in
         .from('topics')
         .insert([{
           user_id: userId,
-          session_id: sessionId,
           title: topic.title,
           slug: topic.slug,
           category: topic.category,
           icon_name: topic.icon_name,
           color: topic.color,
           sort_order: topic.sort_order,
-          is_ai_generated: true,
-          source_documents: [], // Will be populated later
-          meta: {
-            description: topic.description,
-            key_points: topic.key_points
-          }
         }])
         .select()
         .single();
@@ -318,7 +303,8 @@ async function generateTopicContent(supabase: SupabaseClient, topicId: string, u
     // Check if source content is meaningful
     const hasRealContent = sourceContent && 
       sourceContent.length > 50 && 
-      !sourceContent.toLowerCase().includes('placeholder') &&
+      !sourceContent.toLowerCase().includes('note:') &&
+      !sourceContent.toLowerCase().includes('error extracting') &&
       !sourceContent.toLowerCase().includes('requires integration');
 
     // User prompt for topic content
@@ -343,19 +329,19 @@ OUTPUT FORMAT (JSON only):
   ],
   "script": "A 60-120 second first-person narrative that tells a story. Start with context, explain the challenge, describe your approach with specific technologies/methods, and mention the impact. Be conversational but technical. Avoid buzzwords - use concrete examples.",
   "cross_questions": [
-    {"q": "Realistic follow-up question an interviewer would ask about '${topicTitle}'", "a": "Specific, detailed answer with concrete examples. Include technologies, processes, or metrics. Show deep understanding."},
-    {"q": "Technical deep-dive question about implementation details", "a": "Technical answer demonstrating expertise. Mention specific tools, architecture decisions, or problem-solving approaches."},
-    {"q": "Situational question about challenges or trade-offs", "a": "Balanced answer showing critical thinking. Discuss alternatives considered, trade-offs made, and lessons learned."},
-    {"q": "Follow-up about scale, performance, or optimization", "a": "Quantitative answer with metrics, optimization strategies, or scaling approaches used or considered."}
+    "Follow-up question 1 that an interviewer would ask about '${topicTitle}'",
+    "Technical deep-dive question about implementation details",
+    "Situational question about challenges or trade-offs",
+    "Follow-up about scale, performance, or optimization"
   ]
 }
 
 QUALITY STANDARDS:
 - All content should be specific and actionable, not generic
 - Cross-questions should be realistic follow-ups an interviewer would actually ask
-- Answers should demonstrate deep technical knowledge and real-world experience
 - ${hasRealContent ? 'Incorporate details from the source content where relevant' : 'Create believable data engineer scenarios and solutions'}
-- Focus on the data engineering domain: pipelines, databases, cloud platforms, scalability, data quality`;
+- Focus on the data engineering domain: pipelines, databases, cloud platforms, scalability, data quality
+- ALWAYS include exactly 4 cross_questions for each topic`;
 
     // Call OpenAI API for content generation with efficient model
     const llmResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -370,8 +356,7 @@ QUALITY STANDARDS:
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        temperature: 0.4,
-        max_tokens: 2000
+        max_completion_tokens: 2000
       }),
     });
 
@@ -393,6 +378,9 @@ QUALITY STANDARDS:
 
     const { key_points, script, cross_questions } = parsedContent;
 
+    // Ensure cross_questions is an array of strings (not objects)
+    const processedCrossQuestions = Array.isArray(cross_questions) ? cross_questions : [];
+
     // Save content to database
     const { data: version, error: insertError } = await supabase
       .from('topic_content_versions')
@@ -402,7 +390,7 @@ QUALITY STANDARDS:
         source_notes: sourceContent,
         bullets: key_points || [],
         script: script || '',
-        cross_questions: cross_questions || [],
+        cross_questions: processedCrossQuestions,
         meta: { generated: true }
       }])
       .select()
@@ -428,217 +416,201 @@ QUALITY STANDARDS:
 }
 
 // Function to auto-generate topics and content based on uploaded documents
-async function handleAutoGenerateTopicsAndContent(supabase: SupabaseClient, userId: string, content: string, documents: Array<{id: string, name: string, type: string, content: string}>) {
-  try {
-    console.log('Starting auto-generation for user:', userId);
-    console.log('Documents to analyze:', documents.length);
+const handleAutoGenerateTopicsAndContent = async (supabase: SupabaseClient, content: string) => {
+  console.log('Starting auto-generation of topics and content...');
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('User not authenticated');
+  }
 
-    // System prompt for document-based topic generation
-    const systemPrompt = `You are an expert interview preparation coach for data engineers. Analyze the uploaded documents (resume, job description, supporting documents) and automatically generate personalized interview topics with comprehensive content.`;
+  // Get user profile for context
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, role, experience_years')
+    .eq('id', user.id)
+    .single();
 
-    // Analyze the documents for better content quality
-    const hasValidContent = documents.some(doc => 
-      doc.content && 
-      doc.content.length > 50 && 
-      !doc.content.toLowerCase().includes('placeholder') &&
-      !doc.content.toLowerCase().includes('requires integration')
-    );
+  const userContext = profile ? 
+    `User: ${profile.full_name}, Role: ${profile.role}, Experience: ${profile.experience_years} years` : 
+    'User: Data Engineer';
 
-    // User prompt for document analysis and topic generation
-    const userPrompt = `GOAL:
-Analyze the uploaded documents and automatically generate personalized interview topics with complete content for a data engineer interview.
+  // Analyze the content to determine if we have real document content or placeholders
+  const hasRealContent = !content.toLowerCase().includes('note:') && 
+                        !content.toLowerCase().includes('error extracting') &&
+                        !content.toLowerCase().includes('requires integration') &&
+                        content.length > 500;
 
-DOCUMENTS TO ANALYZE:
-${documents.map(doc => {
-  const contentPreview = doc.content ? 
-    (doc.content.length > 1000 ? doc.content.substring(0, 1000) + '...' : doc.content) : 
-    `Document type: ${doc.type}, Name: ${doc.name}`;
-  return `${doc.type.toUpperCase()}: ${doc.name}\nContent: ${contentPreview}`;
-}).join('\n\n')}
+  const contextualPrompt = hasRealContent ? 
+    `REAL DOCUMENT CONTENT DETECTED - Use the specific details below to create highly personalized topics:
 
-CONTENT QUALITY NOTE: 
-${hasValidContent ? 
-  'Full document content is available - use specific details, skills, projects, and requirements mentioned.' : 
-  'Document content extraction is limited - focus on document types and create relevant data engineer topics based on standard expectations for resumes, job descriptions, and supporting documents.'
+${content}
+
+INSTRUCTIONS: Create topics that directly reference and utilize the specific information from these documents. Mention actual projects, companies, skills, and experiences found in the documents.` :
+    `DOCUMENT CONTENT NOT FULLY EXTRACTED - Creating general but comprehensive topics:
+
+${content}
+
+INSTRUCTIONS: Since the document content wasn't fully extracted, create comprehensive data engineering interview topics that cover common areas. Still try to use any meaningful information available from the document names and types.`;
+
+  const prompt = `You are an AI interview preparation specialist. ${contextualPrompt}
+
+${userContext}
+
+Create exactly 6 interview preparation topics that are:
+1. ${hasRealContent ? 'Directly based on the specific content in the documents' : 'Comprehensive and cover key data engineering areas'}
+2. Tailored to the user's experience level and role
+3. Include both technical and behavioral aspects
+4. ${hasRealContent ? 'Reference actual projects, skills, and experiences mentioned' : 'Cover essential data engineering concepts and scenarios'}
+
+For each topic, provide:
+- A descriptive title (max 4 words) 
+- An appropriate icon name from lucide-react (use: database, code, server, chart-bar, settings, brain, users, target, etc.)
+- Key talking points (4-6 bullet points)
+- A natural speaking script (3-4 paragraphs)
+- Cross-questions that an interviewer might ask (4-5 follow-up questions)
+
+${hasRealContent ? 
+  'CRITICAL: Reference specific details from the documents in your content. Mention actual company names, project details, technologies, and achievements found in the documents.' :
+  'CRITICAL: Create comprehensive content that covers essential data engineering topics like data pipelines, ETL processes, database design, big data technologies, etc.'
 }
 
-REQUIREMENTS:
-1. ${hasValidContent ? 'Extract specific skills, technologies, projects, and experience from the actual resume content' : 'Generate relevant data engineer skills and experience topics based on the resume document type'}
-2. ${hasValidContent ? 'Extract specific requirements, technologies, and responsibilities from the job description content' : 'Generate relevant data engineer job requirements topics based on the job description document type'}
-3. Create 6-8 highly relevant topics that combine resume experience with job requirements
-4. Each topic MUST include:
-   - Key points (3-5 specific, actionable bullet points)
-   - Speaking script (60-120 second first-person narrative)
-   - Cross questions & answers (3-4 realistic follow-up Q&A pairs)
-5. Topics should be deeply personalized ${hasValidContent ? 'using the actual document content' : 'based on data engineer role expectations'}
-6. Include technical topics covering: data pipelines, databases, cloud platforms, programming languages
-7. Include behavioral topics: leadership, problem-solving, collaboration, project management
-8. Ensure cross-questions are realistic follow-ups an interviewer would actually ask
-
-OUTPUT FORMAT (JSON only):
+Format your response as a JSON object with this structure:
 {
   "topics": [
     {
-      "title": "Specific Topic Title (e.g., 'Building Scalable Data Pipelines with Apache Spark')",
-      "slug": "building-scalable-data-pipelines-with-apache-spark",
-      "category": "Technical|Behavioral|Projects|Architecture|Leadership",
-      "icon_name": "database|code|users|layers|target|briefcase|chart|settings",
-      "color": "blue|green|red|yellow|purple|orange|pink|indigo",
-      "sort_order": 1,
-      "key_points": [
-        "Specific technical achievement with metrics (e.g., 'Built real-time data pipeline processing 10TB daily using Spark and Kafka')",
-        "Technology stack and architecture decisions (e.g., 'Implemented Delta Lake for ACID transactions and time travel queries')",
-        "Problem solved and business impact (e.g., 'Reduced data processing latency from 4 hours to 15 minutes, enabling real-time analytics')"
-      ],
-      "speaking_script": "Start with context, then explain the technical challenge, describe your solution with specific technologies, mention the impact. Use first-person, be conversational but technical. Example: 'At my previous company, we were struggling with...'",
-      "cross_questions": [
-        {"q": "How did you handle schema evolution in your data pipeline?", "a": "Specific answer with technical details about schema registry, backward compatibility strategies, or versioning approaches used."},
-        {"q": "What monitoring and alerting did you implement?", "a": "Detailed answer about specific monitoring tools, metrics tracked, alerting strategies, and incident response procedures."},
-        {"q": "How did you ensure data quality and handle bad data?", "a": "Concrete examples of data validation rules, error handling strategies, dead letter queues, and data quality monitoring implemented."}
-      ]
+      "title": "Topic Title",
+      "slug": "topic-slug",
+      "icon_name": "icon-name",
+      "color": "blue",
+      "category": "Technical",
+      "bullets": ["Point 1", "Point 2", "Point 3", "Point 4"],
+      "script": "Natural speaking paragraph with specific examples...",
+      "cross_questions": ["Question 1?", "Question 2?", "Question 3?", "Question 4?"]
     }
   ]
 }
 
-CRITICAL: Generate topics that are specific, actionable, and interview-ready. Avoid generic content. ${hasValidContent ? 'Use the actual document content to create personalized topics.' : 'Create realistic data engineer scenarios even without full document content.'}`;
+IMPORTANT: 
+- ${hasRealContent ? 'Use specific details from the documents' : 'Create comprehensive, interview-ready content'}
+- ALWAYS include exactly 4-5 cross_questions for each topic
+- Keep titles concise and actionable
+- Make the script sound natural and conversational
+- Include specific examples and scenarios in the content`;
 
-    // Call OpenAI API with powerful model for comprehensive generation
-    const llmResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${openAIApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: POWERFUL_MODEL, // Use powerful model for comprehensive generation
+        model: POWERFUL_MODEL,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
+          { role: 'system', content: 'You are an expert interview preparation coach specializing in creating personalized content based on user documents. Always include cross-questions for every topic.' },
+          { role: 'user', content: prompt }
         ],
-        temperature: 0.3,
-        max_tokens: 4000
+        max_completion_tokens: 4000,
       }),
     });
 
-    if (!llmResponse.ok) {
-      const error = await llmResponse.text();
-      console.error('OpenAI API error for auto-generation:', error);
-      throw new Error(`OpenAI API error: ${llmResponse.status}`);
+    const data = await response.json();
+    console.log('OpenAI API Response:', JSON.stringify(data, null, 2));
+
+    if (!response.ok) {
+      throw new Error(`OpenAI API error: ${data.error?.message || 'Unknown error'}`);
     }
 
-    const llmData = await llmResponse.json();
-    const rawContent = llmData.choices?.[0]?.message?.content ?? '{}';
-    
-    console.log('Raw OpenAI response for auto-generation:', rawContent);
+    const generatedContent = data.choices[0].message.content;
+    console.log('Generated content:', generatedContent);
 
-    let parsedContent;
+    // Parse the JSON response
+    let parsedResponse;
     try {
-      parsedContent = JSON.parse(rawContent);
+      parsedResponse = JSON.parse(generatedContent);
     } catch (parseError) {
-      console.error('Failed to parse OpenAI response for auto-generation:', rawContent);
+      console.error('Failed to parse OpenAI response as JSON:', parseError);
+      throw new Error('Failed to parse AI response');
+    }
+
+    if (!parsedResponse.topics || !Array.isArray(parsedResponse.topics)) {
       throw new Error('Invalid response format from AI');
     }
 
-    const { topics } = parsedContent;
-    
-    if (!topics || !Array.isArray(topics)) {
-      throw new Error('Invalid topics format from AI');
-    }
-
-    console.log(`Generated ${topics.length} topics`);
-
-    // Create topics in the database
     const createdTopics = [];
-    for (const topic of topics) {
-      try {
-        // Insert topic
-        const { data: topicData, error: topicError } = await supabase
-          .from('topics')
-          .insert([{
-            title: topic.title,
-            slug: topic.slug,
-            category: topic.category,
-            icon_name: topic.icon_name,
-            color: topic.color,
-            sort_order: topic.sort_order,
-            user_id: userId,
-            is_active: true
-          }])
-          .select()
-          .single();
 
-        if (topicError) {
-          console.error('Error creating topic:', topicError);
-          continue;
-        }
+    // Create topics and their content
+    for (const topicData of parsedResponse.topics) {
+      // Ensure cross_questions exist
+      if (!topicData.cross_questions || !Array.isArray(topicData.cross_questions) || topicData.cross_questions.length === 0) {
+        topicData.cross_questions = [
+          "Can you provide more details about this?",
+          "How would you handle challenges in this area?",
+          "What would be your approach if requirements changed?",
+          "How do you ensure quality in this process?"
+        ];
+      }
 
-        console.log('Topic created successfully:', topicData);
-        console.log('Topic ID:', topicData.id);
+      // Insert topic
+      const { data: topic, error: topicError } = await supabase
+        .from('topics')
+        .insert({
+          title: topicData.title,
+          slug: topicData.slug,
+          icon_name: topicData.icon_name || 'code',
+          color: topicData.color || 'blue',
+          category: topicData.category || 'Technical',
+          user_id: user.id,
+        })
+        .select()
+        .single();
 
-        // Insert topic content version
-        const { data: contentData, error: contentError } = await supabase
-          .from('topic_content_versions')
-          .insert([{
-            topic_id: topicData.id,
-            user_id: userId,
-            source_notes: `Auto-generated from uploaded documents: ${documents.map(d => d.name).join(', ')}`,
-            bullets: topic.key_points || [],
-            script: topic.speaking_script || '',
-            cross_questions: topic.cross_questions || [],
-            meta: { auto_generated: true, documents: documents.map(d => ({ id: d.id, name: d.name, type: d.type })) }
-          }])
-          .select()
-          .single();
-
-        if (contentError) {
-          console.error('Error creating content version:', contentError);
-          continue;
-        }
-
-        console.log('Content version created successfully:', contentData);
-
-        // Set as current version
-        const { error: currentVersionError } = await supabase
-          .from('topic_current_version')
-          .upsert({ 
-            topic_id: topicData.id, 
-            version_id: contentData.id, 
-            user_id: userId 
-          });
-
-        if (currentVersionError) {
-          console.error('Error setting current version:', currentVersionError);
-        }
-
-        createdTopics.push(topicData);
-        console.log('Topic and content created successfully for:', topic.title);
-        
-      } catch (topicError) {
-        console.error('Error processing topic:', topicError);
+      if (topicError) {
+        console.error('Error creating topic:', topicError);
         continue;
       }
+
+      // Create content version
+      const { data: contentVersion, error: contentError } = await supabase
+        .from('topic_content_versions')
+        .insert({
+          topic_id: topic.id,
+          user_id: user.id,
+          bullets: topicData.bullets || [],
+          script: topicData.script || '',
+          cross_questions: topicData.cross_questions || [],
+        })
+        .select()
+        .single();
+
+      if (contentError) {
+        console.error('Error creating content version:', contentError);
+        continue;
+      }
+
+      // Set as current version
+      await supabase
+        .from('topic_current_version')
+        .insert({
+          topic_id: topic.id,
+          version_id: contentVersion.id,
+          user_id: user.id,
+        });
+
+      createdTopics.push(topic);
     }
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      topicsCreated: createdTopics.length,
-      topics: createdTopics
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.log(`Successfully created ${createdTopics.length} topics with content`);
+    return { topics: createdTopics };
 
   } catch (error) {
     console.error('Error in auto-generation:', error);
-    return new Response(JSON.stringify({ 
-      success: false, 
-      error: error.message 
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    throw error;
   }
-}
+};
 
+// Main handler
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -646,168 +618,79 @@ serve(async (req) => {
   }
 
   try {
-    const { topicId, sourceNotes, topicTitle, options = {}, action, content, sessionId, userId, documents } = await req.json();
+    const { action, content, sessionId, userId, topicId, prompt, documents } = await req.json();
     
-    if (!openAIApiKey) {
-      throw new Error('OpenAI API key not configured');
-    }
-
-    // Get user from auth header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('No authorization header');
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Handle different actions
-    if (action === 'generate_default_tabs') {
-      return await handleAutoGenerateTopicsAndContent(supabase, userId, content, documents);
-    }
-    
-    if (action === 'generate_tabs') {
-      return await handleGenerateTabs(supabase, content, sessionId, userId);
-    }
-
-    // Original topic content generation logic
-    if (!topicId || !sourceNotes || !topicTitle) {
-      throw new Error('Missing required parameters for topic content generation');
-    }
-
-    // System prompt for interview coaching
-    const systemPrompt = `You are an interview coach for a senior data engineer. Write outputs that are concise, technically credible, and easy to speak aloud. Use simple sentences, minimal filler, and include concrete details (technologies, metrics, architecture). Maintain a confident but humble tone. Avoid buzzword fluff.`;
-
-    // User prompt template
-    const userPrompt = `GOAL:
-Turn the notes into three outputs for the topic: "${topicTitle}".
-
-CONTEXT:
-- Candidate background: data engineer; Kafka, Spark, Redshift, Airflow; GCP/AWS; privacy-aware; adtech + fintech exposure.
-- Target company context: high-growth startup; business-focused; wants clarity & ownership.
-
-SOURCE NOTES (raw, messy—clean them):
-<<<
-${sourceNotes}
->>>
-
-OUTPUT FORMAT (JSON only):
-{
-  "bullets": [
-    "3–6 bullets; crisp; each 8–18 words; mention specific tech, design choices, metrics"
-  ],
-  "script": "A 60–120 second speakable paragraph; simple, confident, first-person; no headings.",
-  "cross_questions": [
-    {"q": "Likely follow-up question #1", "a": "Concise but specific answer with concrete examples."},
-    {"q": "Likely follow-up question #2", "a": "…"},
-    {"q": "Likely follow-up question #3", "a": "…"}
-  ]
-}
-
-STYLE REQUIREMENTS:
-- Prefer STAR framing implicitly (Situation→Action→Impact) without labeling it.
-- Include at least 2 concrete numbers (e.g., performance %, latency, $ impact) when plausible.
-- Use the candidate's stack where possible: Kafka, Spark, Redshift, Airflow, dbt, Looker.
-- Keep the language natural to speak. No corporate clichés.`;
-
-    console.log('Calling OpenAI API...');
-    
-    // Call OpenAI API
-    const llmResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        temperature: 0.4,
-        max_tokens: 2000
-      }),
-    });
-
-    if (!llmResponse.ok) {
-      const error = await llmResponse.text();
-      console.error('OpenAI API error:', error);
-      throw new Error(`OpenAI API error: ${llmResponse.status}`);
-    }
-
-    const llmData = await llmResponse.json();
-    const rawContent = llmData.choices?.[0]?.message?.content ?? '{}';
-    
-    console.log('Raw OpenAI response:', rawContent);
-
-    let parsedContent;
-    try {
-      parsedContent = JSON.parse(rawContent);
-    } catch (parseError) {
-      console.error('Failed to parse OpenAI response:', rawContent);
-      throw new Error('Invalid response format from AI');
-    }
-
-    const { bullets, script, cross_questions } = parsedContent;
-
-    // Get user ID from JWT token
-    const jwt = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(jwt);
-    
-    if (authError || !user) {
-      throw new Error('Invalid auth token');
-    }
-
-    // Save to database
-    const { data: version, error: insertError } = await supabase
-      .from('topic_content_versions')
-      .insert([{
-        topic_id: topicId,
-        user_id: user.id,
-        source_notes: sourceNotes,
-        bullets: bullets || [],
-        script: script || '',
-        cross_questions: cross_questions || [],
-        meta: { options }
-      }])
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('Database insert error:', insertError);
-      throw new Error('Failed to save content to database');
-    }
-
-    // Update current version pointer
-    const { error: upsertError } = await supabase
-      .from('topic_current_version')
-      .upsert({ 
-        topic_id: topicId, 
-        version_id: version.id, 
-        user_id: user.id 
-      });
-
-    if (upsertError) {
-      console.error('Failed to update current version:', upsertError);
-    }
-
-    return new Response(JSON.stringify({ 
-      success: true, 
-      versionId: version.id,
-      content: {
-        bullets,
-        script,
-        cross_questions
+    // Initialize Supabase client with service role key
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
       }
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
+
+    // Authenticate user from the authorization header
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      if (error || !user) {
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
+    switch (action) {
+      case 'generate_default_tabs':
+        return await handleGenerateDefaultTabs(supabase, userId);
+
+      case 'generate_tabs':
+        return await handleGenerateTabs(supabase, content, sessionId, userId);
+
+      case 'auto_generate_topics_and_content':
+        const result = await handleAutoGenerateTopicsAndContent(supabase, content);
+        return new Response(JSON.stringify({ 
+          success: true, 
+          topicsCreated: result.topics.length,
+          topics: result.topics
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+
+      default:
+        // Handle direct topic content generation
+        if (!topicId || !prompt) {
+          return new Response(JSON.stringify({ error: 'Missing required parameters' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Get user from auth header for direct topic generation
+        const authHeaderDirect = req.headers.get('Authorization');
+        const token = authHeaderDirect?.replace('Bearer ', '');
+        const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+        
+        if (userError || !user) {
+          return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+            status: 401,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Generate content for the specific topic
+        await generateTopicContent(supabase, topicId, user.id, prompt, 'Custom Topic');
+        
+        return new Response(JSON.stringify({ success: true }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+    }
 
   } catch (error) {
     console.error('Error in generate-content function:', error);
     return new Response(JSON.stringify({ 
-      success: false, 
-      error: error.message 
+      error: error.message || 'Internal server error'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
