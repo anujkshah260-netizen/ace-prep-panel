@@ -110,32 +110,59 @@ Make these topics specific and actionable for data engineers.`;
       throw new Error('Invalid topics format from AI');
     }
 
-    // Create default topics in database
+    // Create default topics in database, checking for duplicates first
     const createdTopics = [];
     for (const topic of topics) {
-      const { data: topicData, error: topicError } = await supabase
+      // Check if topic already exists for this user
+      const { data: existingTopic } = await supabase
         .from('topics')
-        .insert([{
-          user_id: userId,
-          title: topic.title,
-          slug: topic.slug,
-          category: topic.category,
-          icon_name: topic.icon_name,
-          color: topic.color,
-          sort_order: topic.sort_order,
-        }])
-        .select()
+        .select('id, title')
+        .eq('user_id', userId)
+        .eq('slug', topic.slug)
         .single();
 
-      if (topicError) {
-        console.error('Error creating default topic:', topicError);
-        continue;
+      let topicData;
+      if (existingTopic) {
+        console.log(`Topic ${topic.slug} already exists for user, skipping creation`);
+        topicData = existingTopic;
+      } else {
+        // Create new topic
+        const { data: newTopic, error: topicError } = await supabase
+          .from('topics')
+          .insert([{
+            user_id: userId,
+            title: topic.title,
+            slug: topic.slug,
+            category: topic.category,
+            icon_name: topic.icon_name,
+            color: topic.color,
+            sort_order: topic.sort_order,
+          }])
+          .select()
+          .single();
+
+        if (topicError) {
+          console.error('Error creating default topic:', topicError);
+          continue;
+        }
+        
+        topicData = newTopic;
       }
 
       createdTopics.push(topicData);
 
-      // Generate initial content for each default topic
-      await generateTopicContent(supabase, topicData.id, userId, "Default data engineering interview preparation content", topic.title);
+      // Check if content already exists for this topic
+      const { data: existingContent } = await supabase
+        .from('topic_content_versions')
+        .select('id')
+        .eq('topic_id', topicData.id)
+        .eq('user_id', userId)
+        .single();
+
+      // Only generate content if it doesn't exist
+      if (!existingContent) {
+        await generateTopicContent(supabase, topicData.id, userId, "Default data engineering interview preparation content", topic.title);
+      }
     }
 
     return new Response(JSON.stringify({ 
@@ -246,32 +273,59 @@ Make topics specific to the technologies, projects, and experiences mentioned in
       throw new Error('Invalid topics format from AI');
     }
 
-    // Create topics in database
+    // Create topics in database, checking for duplicates first
     const createdTopics = [];
     for (const topic of topics) {
-      const { data: topicData, error: topicError } = await supabase
+      // Check if topic already exists for this user
+      const { data: existingTopic } = await supabase
         .from('topics')
-        .insert([{
-          user_id: userId,
-          title: topic.title,
-          slug: topic.slug,
-          category: topic.category,
-          icon_name: topic.icon_name,
-          color: topic.color,
-          sort_order: topic.sort_order,
-        }])
-        .select()
+        .select('id, title')
+        .eq('user_id', userId)
+        .eq('slug', topic.slug)
         .single();
 
-      if (topicError) {
-        console.error('Error creating topic:', topicError);
-        continue;
+      let topicData;
+      if (existingTopic) {
+        console.log(`Topic ${topic.slug} already exists for user, skipping creation`);
+        topicData = existingTopic;
+      } else {
+        // Create new topic
+        const { data: newTopic, error: topicError } = await supabase
+          .from('topics')
+          .insert([{
+            user_id: userId,
+            title: topic.title,
+            slug: topic.slug,
+            category: topic.category,
+            icon_name: topic.icon_name,
+            color: topic.color,
+            sort_order: topic.sort_order,
+          }])
+          .select()
+          .single();
+
+        if (topicError) {
+          console.error('Error creating topic:', topicError);
+          continue;
+        }
+        
+        topicData = newTopic;
       }
 
       createdTopics.push(topicData);
 
-      // Generate initial content for each topic
-      await generateTopicContent(supabase, topicData.id, userId, content, topic.title);
+      // Check if content already exists for this topic
+      const { data: existingContent } = await supabase
+        .from('topic_content_versions')
+        .select('id')
+        .eq('topic_id', topicData.id)
+        .eq('user_id', userId)
+        .single();
+
+      // Only generate content if it doesn't exist
+      if (!existingContent) {
+        await generateTopicContent(supabase, topicData.id, userId, content, topic.title);
+      }
     }
 
     return new Response(JSON.stringify({ 

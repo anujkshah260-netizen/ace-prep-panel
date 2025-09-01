@@ -59,7 +59,12 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
     return `Updated ${dateStr} at ${timeStr}`;
   };
 
-  const highlightKeywords = (text: string) => {
+  const highlightKeywords = (text: string | null | undefined) => {
+    // Handle null/undefined safely
+    if (!text || typeof text !== 'string') {
+      return '';
+    }
+    
     // Common technical keywords to highlight
     const keywords = [
       'Python', 'SQL', 'Apache Spark', 'Apache Kafka', 'AWS', 'GCP', 'Azure',
@@ -131,7 +136,7 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
               variant="ghost"
               size="sm"
               onClick={() => copyToClipboard(
-                content.bullets.map(bullet => `• ${bullet}`).join('\n'),
+                (content.bullets || []).map(bullet => `• ${bullet}`).join('\n'),
                 'Key points'
               )}
             >
@@ -141,7 +146,7 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
         </CardHeader>
         <CardContent>
           <ul className="space-y-2">
-            {content.bullets.map((bullet, index) => (
+            {content.bullets?.map((bullet, index) => (
               <li key={index} className="flex items-start gap-3">
                 <div className="w-2 h-2 rounded-full bg-primary mt-2 flex-shrink-0" />
                 <span 
@@ -149,7 +154,7 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
                   dangerouslySetInnerHTML={{ __html: highlightKeywords(bullet) }}
                 />
               </li>
-            ))}
+            )) || []}
           </ul>
         </CardContent>
       </Card>
@@ -165,7 +170,7 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="gap-1">
                 <Clock className="w-3 h-3" />
-                {estimateReadingTime(content.script)}
+                {estimateReadingTime(content.script || '')}
               </Badge>
               <Button
                 variant="ghost"
@@ -188,7 +193,7 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
       </Card>
 
       {/* Cross Questions */}
-      {content.cross_questions.length > 0 && (
+      {content.cross_questions?.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2">
@@ -197,21 +202,27 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {content.cross_questions.map((qa, index) => (
-              <div key={index} className="space-y-2">
-                <div className="font-medium text-foreground">
-                  <span className="text-primary">Q{index + 1}:</span> 
-                  <span dangerouslySetInnerHTML={{ __html: highlightKeywords(qa.q) }} />
+            {content.cross_questions?.map((qa, index) => {
+              // Handle both string format and object format for cross questions
+              const question = typeof qa === 'string' ? qa : qa?.q || '';
+              const answer = typeof qa === 'string' ? 'Follow-up answer would be provided during interview.' : qa?.a || '';
+              
+              return (
+                <div key={index} className="space-y-2">
+                  <div className="font-medium text-foreground">
+                    <span className="text-primary">Q{index + 1}:</span> 
+                    <span dangerouslySetInnerHTML={{ __html: highlightKeywords(question) }} />
+                  </div>
+                  <div className="text-muted-foreground leading-relaxed pl-6">
+                    <strong>A:</strong> 
+                    <span dangerouslySetInnerHTML={{ __html: highlightKeywords(answer) }} />
+                  </div>
+                  {index < content.cross_questions.length - 1 && (
+                    <Separator className="my-4" />
+                  )}
                 </div>
-                <div className="text-muted-foreground leading-relaxed pl-6">
-                  <strong>A:</strong> 
-                  <span dangerouslySetInnerHTML={{ __html: highlightKeywords(qa.a) }} />
-                </div>
-                {index < content.cross_questions.length - 1 && (
-                  <Separator className="my-4" />
-                )}
-              </div>
-            ))}
+              );
+            }) || []}
           </CardContent>
         </Card>
       )}
