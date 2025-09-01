@@ -422,18 +422,47 @@ QUALITY STANDARDS:
     const llmData = await llmResponse.json();
     const rawContent = llmData.choices?.[0]?.message?.content ?? '{}';
     
+    console.log('Raw OpenAI response for topic content:', rawContent);
+    
     let parsedContent;
     try {
       parsedContent = JSON.parse(rawContent);
     } catch (parseError) {
       console.error('Failed to parse OpenAI response for topic content:', rawContent);
-      return;
+      console.error('Parse error details:', parseError);
+      
+      // Try to extract JSON from markdown code blocks if present
+      const jsonMatch = rawContent.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+      if (jsonMatch) {
+        try {
+          parsedContent = JSON.parse(jsonMatch[1]);
+          console.log('Successfully extracted JSON from markdown code block');
+        } catch (secondParseError) {
+          console.error('Failed to parse extracted JSON:', secondParseError);
+          return;
+        }
+      } else {
+        return;
+      }
     }
 
     const { key_points, script, cross_questions } = parsedContent;
 
-    // Ensure cross_questions is an array of strings (not objects)
-    const processedCrossQuestions = Array.isArray(cross_questions) ? cross_questions : [];
+    // Ensure cross_questions is an array of strings and validate format
+    let processedCrossQuestions = [];
+    if (Array.isArray(cross_questions)) {
+      processedCrossQuestions = cross_questions.filter(q => q && typeof q === 'string' && q.trim().length > 0);
+    }
+    
+    // Ensure we always have some cross questions for better user experience
+    if (processedCrossQuestions.length === 0) {
+      processedCrossQuestions = [
+        `Can you elaborate on your experience with ${topicTitle.toLowerCase()}?`,
+        `What challenges did you face when working on ${topicTitle.toLowerCase()}?`,
+        `How did you measure success in your ${topicTitle.toLowerCase()} projects?`,
+        `What would you do differently if you had to approach ${topicTitle.toLowerCase()} again?`
+      ];
+    }
 
     // Save content to database
     const { data: version, error: insertError } = await supabase

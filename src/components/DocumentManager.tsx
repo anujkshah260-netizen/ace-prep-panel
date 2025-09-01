@@ -219,8 +219,18 @@ export const DocumentManager = () => {
 
   const extractTextFromFile = async (file: File): Promise<string> => {
     try {
-      const { processDocumentFile } = await import('@/utils/documentProcessing');
-      return await processDocumentFile(file);
+      const { processDocumentFile, validateDocumentContent } = await import('@/utils/documentProcessing');
+      const extractedText = await processDocumentFile(file);
+      
+      // Validate the extracted content
+      const validation = validateDocumentContent(extractedText, file.name);
+      if (!validation.isValid) {
+        console.warn(`Document validation failed for ${file.name}:`, validation.reason);
+        // Still return the text, but prefix with validation info for debugging
+        return `Note: ${validation.reason}\n\n${extractedText}`;
+      }
+      
+      return extractedText;
     } catch (error) {
       console.error('Error extracting text from file:', error);
       return `Error processing ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
