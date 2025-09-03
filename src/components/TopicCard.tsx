@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { 
   Code, Zap, Flame, Cloud, Database, Shield, 
-  GitBranch, Activity, User, Settings, Edit2 
+  GitBranch, Activity, User, Settings, Edit2,
+  Sparkles, Target, Clock, Users, CheckCircle,
+  DollarSign, Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -23,6 +25,8 @@ interface TopicCardProps {
   onClick: (topic: Topic) => void;
   onEdit?: (topic: Topic) => void;
   hasContent?: boolean;
+  onGenerateContent?: (topic: Topic) => void;
+  isGenerating?: boolean;
   className?: string;
 }
 
@@ -37,6 +41,11 @@ const iconMap = {
   activity: Activity,
   user: User,
   settings: Settings,
+  target: Target,
+  clock: Clock,
+  users: Users,
+  'check-circle': CheckCircle,
+  'dollar-sign': DollarSign,
 };
 
 const colorMap = {
@@ -55,6 +64,8 @@ export const TopicCard = ({
   onClick, 
   onEdit, 
   hasContent = false,
+  onGenerateContent,
+  isGenerating = false,
   className 
 }: TopicCardProps) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -92,13 +103,48 @@ export const TopicCard = ({
           {topic.category}
         </Badge>
         
-        {/* Content indicator */}
+        {/* Content status indicator */}
         {hasContent && (
-          <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-green-500"></div>
+          <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-green-500" title="Content generated"></div>
         )}
         
-        {/* Edit button - appears on hover */}
-        {onEdit && (
+        {/* Generate Content button - shows when no content */}
+        {!hasContent && onGenerateContent && !isGenerating && (
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(
+              "absolute -bottom-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-300",
+              "text-xs whitespace-nowrap bg-background border-primary/20 hover:bg-primary/10",
+              isHovered && "opacity-100"
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              onGenerateContent(topic);
+            }}
+          >
+            <Sparkles className="w-3 h-3 mr-1" />
+            Generate Content
+          </Button>
+        )}
+        
+        {/* Loading state during generation */}
+        {isGenerating && (
+          <div className="absolute -bottom-8 left-1/2 -translate-x-1/2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled
+              className="text-xs bg-background border-primary/20"
+            >
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              Generating...
+            </Button>
+          </div>
+        )}
+        
+        {/* Edit button - appears on hover for topics with content */}
+        {hasContent && onEdit && (
           <Button
             variant="ghost"
             size="sm"

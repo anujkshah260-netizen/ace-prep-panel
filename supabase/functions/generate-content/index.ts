@@ -726,7 +726,138 @@ serve(async (req) => {
 
     switch (action) {
       case 'generate_default_tabs':
-        return await handleGenerateDefaultTabs(supabase, userId);
+        // Create only topic structure, no AI content generation (FAST)
+        try {
+          const { data: existingTopics, error: checkError } = await supabase
+            .from('topics')
+            .select('id')
+            .eq('user_id', userId)
+            .limit(1);
+
+          if (existingTopics && existingTopics.length > 0) {
+            return new Response(JSON.stringify({ 
+              success: true, 
+              message: 'Topics already exist' 
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+
+          // Create 4 core topic structures without AI content generation
+          const coreTopics = [
+            {
+              title: 'Introduction & Summary',
+              slug: 'introduction-summary',
+              category: 'Behavioral',
+              icon_name: 'user',
+              color: 'blue',
+              sort_order: 1,
+              user_id: userId
+            },
+            {
+              title: 'Recent Projects & Experience',
+              slug: 'recent-projects-experience', 
+              category: 'Projects',
+              icon_name: 'target',
+              color: 'green',
+              sort_order: 2,
+              user_id: userId
+            },
+            {
+              title: 'Technical Skills & Technologies',
+              slug: 'technical-skills-technologies',
+              category: 'Technical', 
+              icon_name: 'code',
+              color: 'purple',
+              sort_order: 3,
+              user_id: userId
+            },
+            {
+              title: 'Problem-Solving & Troubleshooting',
+              slug: 'problem-solving-troubleshooting',
+              category: 'Technical',
+              icon_name: 'settings', 
+              color: 'orange',
+              sort_order: 4,
+              user_id: userId
+            }
+          ];
+
+          // Insert topics into database (fast operation, no AI calls)
+          const { data: insertedTopics, error: insertError } = await supabase
+            .from('topics')
+            .insert(coreTopics)
+            .select();
+
+          if (insertError) {
+            throw insertError;
+          }
+
+          console.log(`Successfully created ${insertedTopics.length} topic structures for user ${userId}`);
+          
+          return new Response(JSON.stringify({ 
+            success: true, 
+            topicsCreated: insertedTopics.length,
+            topics: insertedTopics,
+            message: `Successfully created ${insertedTopics.length} topics. Generate content for each topic individually.`
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+
+        } catch (error) {
+          console.error('Error creating default topics:', error);
+          return new Response(JSON.stringify({ 
+            success: false, 
+            error: error.message 
+          }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+      case 'generate_single_topic_content':
+        // New action for individual topic content generation
+        try {
+          const { topicId, topicTitle, sourceNotes } = await req.json();
+          
+          if (!topicId || !topicTitle) {
+            throw new Error('topicId and topicTitle are required for single topic content generation');
+          }
+
+          // Get user from auth header
+          const authHeaderSingle = req.headers.get('Authorization');
+          const token = authHeaderSingle?.replace('Bearer ', '');
+          const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+          
+          if (userError || !user) {
+            throw new Error('Unauthorized');
+          }
+          
+          await generateTopicContent(
+            supabase, 
+            topicId, 
+            user.id, 
+            sourceNotes || 'Generate content for this interview preparation topic.', 
+            topicTitle
+          );
+          
+          return new Response(JSON.stringify({ 
+            success: true, 
+            message: 'Topic content generated successfully' 
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+
+        } catch (error) {
+          console.error('Error generating single topic content:', error);
+          return new Response(JSON.stringify({ 
+            success: false, 
+            error: error.message 
+          }), {
+            status: 500,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
 
       case 'generate_tabs':
         return await handleGenerateTabs(supabase, content, sessionId, userId);
@@ -742,7 +873,7 @@ serve(async (req) => {
         });
 
       default:
-        // Handle direct topic content generation
+        // Handle direct topic content generation (legacy support)
         if (!topicId || !prompt) {
           return new Response(JSON.stringify({ error: 'Missing required parameters' }), {
             status: 400,

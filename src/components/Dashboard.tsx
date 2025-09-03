@@ -52,6 +52,10 @@ export const Dashboard = () => {
   const [customTopicSourceNotes, setCustomTopicSourceNotes] = useState('');
   const [isCreatingCustomTopic, setIsCreatingCustomTopic] = useState(false);
   
+  // Individual topic content generation state
+  const [topicsWithContent, setTopicsWithContent] = useState<Set<string>>(new Set());
+  const [generatingTopics, setGeneratingTopics] = useState<Set<string>>(new Set());
+  
   const { toast } = useToast();
 
   const loadTopics = useCallback(async () => {
@@ -72,6 +76,19 @@ export const Dashboard = () => {
       }
       
       setTopics(data || []);
+      
+      // Check which topics have content
+      if (data && data.length > 0) {
+        const topicIds = data.map(t => t.id);
+        const { data: contentVersions } = await supabase
+          .from('topic_current_version')
+          .select('topic_id')
+          .in('topic_id', topicIds);
+          
+        if (contentVersions) {
+          setTopicsWithContent(new Set(contentVersions.map(cv => cv.topic_id)));
+        }
+      }
     } catch (error) {
       console.error('Error:', error);
     } finally {
@@ -114,7 +131,7 @@ export const Dashboard = () => {
         if (!existingTopics || existingTopics.length === 0) {
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
-            // Use AI to generate default topics instead of static ones
+            // Create default topic structures (fast, no AI content generation)
             const { generateDefaultTabs } = await import('@/api/generate-content');
             const result = await generateDefaultTabs({
               action: 'generate_default_tabs',
@@ -124,7 +141,12 @@ export const Dashboard = () => {
             });
             
             if (result.success) {
-              console.log('Default AI-generated topics created successfully');
+              console.log('Default topic structures created successfully');
+              toast({
+                title: "Welcome!",
+                description: "4 core interview topics created. Generate content for each topic individually to avoid timeouts.",
+                duration: 5000
+              });
               loadTopics(); // Reload topics after creation
             } else {
               console.error('Failed to create default topics:', result.error);
@@ -274,6 +296,46 @@ export const Dashboard = () => {
     setShowCustomTopicModal(true);
   };
 
+  // Generate content for individual topic
+  const handleGenerateTopicContent = async (topic: Topic) => {
+    setGeneratingTopics(prev => new Set(prev).add(topic.id));
+    
+    try {
+      const { generateSingleTopicContent } = await import('@/api/generate-content');
+      const result = await generateSingleTopicContent(topic.id, topic.title);
+      
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: `Content generated for ${topic.title}!`
+        });
+        
+        // Update the topics with content set
+        setTopicsWithContent(prev => new Set(prev).add(topic.id));
+        
+        // If this topic is currently selected, reload its content
+        if (selectedTopic?.id === topic.id) {
+          await loadTopicContent(topic);
+        }
+      } else {
+        throw new Error(result.error || 'Failed to generate content');
+      }
+    } catch (error) {
+      console.error('Error generating topic content:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to generate topic content",
+        variant: "destructive"
+      });
+    } finally {
+      setGeneratingTopics(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(topic.id);
+        return newSet;
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -378,14 +440,16 @@ export const Dashboard = () => {
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-8">
                   {categoryTopics.map((topic) => (
                     <TopicCard
                       key={topic.id}
                       topic={topic}
                       onClick={handleTopicClick}
-                      onEdit={handleEditTopic}
-                      hasContent={false} // TODO: Check if topic has content
+                      onEdit={topicsWithContent.has(topic.id) ? handleEditTopic : undefined}
+                      hasContent={topicsWithContent.has(topic.id)}
+                      onGenerateContent={!topicsWithContent.has(topic.id) ? handleGenerateTopicContent : undefined}
+                      isGenerating={generatingTopics.has(topic.id)}
                     />
                   ))}
                 </div>

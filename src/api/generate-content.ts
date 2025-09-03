@@ -171,3 +171,49 @@ export const generateContent = async (
     };
   }
 };
+
+export const generateSingleTopicContent = async (
+  topicId: string, 
+  topicTitle: string, 
+  sourceNotes?: string
+): Promise<GenerateContentResponse> => {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      throw new Error('No active session');
+    }
+
+    // Call the Supabase Edge Function for single topic content generation
+    const response = await fetch(
+      `https://xzvalmxbbozhbiamsnzy.supabase.co/functions/v1/generate-content`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          action: 'generate_single_topic_content',
+          topicId,
+          topicTitle,
+          sourceNotes: sourceNotes || ''
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Error calling generate-single-topic-content function:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+};

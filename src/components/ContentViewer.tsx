@@ -89,14 +89,13 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
       <Card className="border-dashed">
         <CardContent className="flex flex-col items-center justify-center py-20">
           <FileText className="w-16 h-16 text-muted-foreground mb-4" />
-          <h3 className="text-xl font-semibold mb-2">No Content Yet</h3>
-          <p className="text-muted-foreground text-center mb-6">
-            Create your first AI-generated content for <strong>{topic.title}</strong>.
+          <h3 className="text-xl font-semibold mb-2">No Content Generated Yet</h3>
+          <p className="text-muted-foreground text-center mb-6 max-w-md mx-auto">
+            This topic is ready for content generation. Use the <strong>"Generate Content"</strong> button on the topic card to create personalized interview preparation materials.
           </p>
-          <Button onClick={onEdit} className="gap-2">
-            <Edit2 className="w-4 h-4" />
-            Create Content
-          </Button>
+          <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground max-w-lg mx-auto">
+            <p>💡 <strong>Tip:</strong> Generate content individually for each topic to avoid timeouts and get faster results.</p>
+          </div>
         </CardContent>
       </Card>
     );
