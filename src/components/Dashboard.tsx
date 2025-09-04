@@ -134,10 +134,7 @@ export const Dashboard = () => {
             // Create default topic structures (fast, no AI content generation)
             const { generateDefaultTabs } = await import('@/api/generate-content');
             const result = await generateDefaultTabs({
-              action: 'generate_default_tabs',
-              userId: user.id,
-              content: 'Default interview preparation content',
-              documents: []
+              userId: user.id
             });
             
             if (result.success) {
@@ -255,11 +252,9 @@ export const Dashboard = () => {
       // Call the Edge Function to create custom topic
       const { generateContent } = await import('@/api/generate-content');
       const result = await generateContent({
-        action: 'create_custom_topic',
-        topicTitle: customTopicTitle,
-        sourceNotes: customTopicSourceNotes,
+        title: customTopicTitle,
         category: customTopicCategory,
-        userId: user.id
+        sourceNotes: customTopicSourceNotes
       });
 
       if (result.success) {

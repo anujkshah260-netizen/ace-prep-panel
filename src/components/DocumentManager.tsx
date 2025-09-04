@@ -306,7 +306,6 @@ export const DocumentManager = () => {
       // Call the generate-content function
       const { generateInterviewTabs } = await import('@/api/generate-content');
       const result = await generateInterviewTabs({
-        action: 'generate_tabs',
         content: allContent,
         sessionId: currentSession.id,
         userId: user.id
@@ -371,15 +370,7 @@ export const DocumentManager = () => {
       // Call the generate-content function for auto-generation
       const { generateDefaultTabs } = await import('@/api/generate-content');
       const result = await generateDefaultTabs({
-        action: 'generate_default_tabs',
-        userId: user.id,
-        content: allContent,
-        documents: documents.map(doc => ({
-          id: doc.id,
-          name: doc.name,
-          type: doc.type,
-          content: doc.content_text || ''
-        }))
+        userId: user.id
       });
       
       if (result.success) {
