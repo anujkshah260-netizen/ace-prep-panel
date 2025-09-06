@@ -12,7 +12,9 @@ import {
   Filter, Grid, List, FileText, Sparkles,
   X, Loader2
 } from 'lucide-react';
-import { useToast } from '@/components/ui/use-toast';
+import { useNotifications } from '@/hooks/useNotifications';
+import { ErrorBoundary, SimpleErrorFallback } from '@/components/ErrorBoundary';
+import { LoadingSpinner, LoadingOverlay } from '@/components/LoadingSpinner';
 
 interface Topic {
   id: string;
@@ -56,7 +58,7 @@ export const Dashboard = () => {
   const [topicsWithContent, setTopicsWithContent] = useState<Set<string>>(new Set());
   const [generatingTopics, setGeneratingTopics] = useState<Set<string>>(new Set());
   
-  const { toast } = useToast();
+  const { showSuccess, showError, showInfo } = useNotifications();
 
   const loadTopics = useCallback(async () => {
     try {
@@ -67,11 +69,7 @@ export const Dashboard = () => {
       
       if (error) {
         console.error('Error loading topics:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load topics",
-          variant: "destructive"
-        });
+        showError("Failed to load topics", "Please refresh the page to try again.");
         return;
       }
       
@@ -94,7 +92,7 @@ export const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [showError]);
 
   // Check authentication and load topics on mount
   useEffect(() => {
@@ -139,11 +137,10 @@ export const Dashboard = () => {
             
             if (result.success) {
               console.log('Default topic structures created successfully');
-              toast({
-                title: "Welcome!",
-                description: "4 core interview topics created. Generate content for each topic individually to avoid timeouts.",
-                duration: 5000
-              });
+              showInfo(
+                "Welcome!",
+                "4 core interview topics created. Generate content for each topic individually to avoid timeouts."
+              );
               loadTopics(); // Reload topics after creation
             } else {
               console.error('Failed to create default topics:', result.error);
@@ -210,11 +207,7 @@ export const Dashboard = () => {
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to sign out",
-        variant: "destructive"
-      });
+      showError("Failed to sign out", "Please try again.");
     }
   };
 
@@ -233,11 +226,7 @@ export const Dashboard = () => {
 
   const createCustomTopic = async () => {
     if (!customTopicTitle.trim() || !customTopicCategory || !customTopicSourceNotes.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all fields",
-        variant: "destructive"
-      });
+      showError("Validation Error", "Please fill in all fields");
       return;
     }
 
@@ -258,10 +247,7 @@ export const Dashboard = () => {
       });
 
       if (result.success) {
-        toast({
-          title: "Success",
-          description: "Custom topic created successfully!"
-        });
+        showSuccess("Custom topic created successfully!");
         
         // Reset form and close modal
         setCustomTopicTitle('');
@@ -276,11 +262,10 @@ export const Dashboard = () => {
       }
     } catch (error) {
       console.error('Error creating custom topic:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create custom topic",
-        variant: "destructive"
-      });
+      showError(
+        "Failed to create topic",
+        error instanceof Error ? error.message : "Please try again or contact support if the problem persists."
+      );
     } finally {
       setIsCreatingCustomTopic(false);
     }
@@ -300,10 +285,10 @@ export const Dashboard = () => {
       const result = await generateSingleTopicContent(topic.id, topic.title);
       
       if (result.success) {
-        toast({
-          title: "Success",
-          description: `Content generated for ${topic.title}!`
-        });
+        showSuccess(
+          "Content generated successfully",
+          `Generated fresh content for ${topic.title}`
+        );
         
         // Update the topics with content set
         setTopicsWithContent(prev => new Set(prev).add(topic.id));
@@ -316,12 +301,11 @@ export const Dashboard = () => {
         throw new Error(result.error || 'Failed to generate content');
       }
     } catch (error) {
-      console.error('Error generating topic content:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to generate topic content",
-        variant: "destructive"
-      });
+      console.error('Error generating content for topic:', error);
+      showError(
+        "Failed to generate content",
+        "Please try again. If the problem persists, try refreshing the page."
+      );
     } finally {
       setGeneratingTopics(prev => {
         const newSet = new Set(prev);
@@ -333,8 +317,8 @@ export const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <LoadingSpinner size="lg" text="Loading your dashboard..." />
       </div>
     );
   }
@@ -462,10 +446,7 @@ export const Dashboard = () => {
                   onContentSaved={(newContent) => {
                     setCurrentContent(newContent);
                     setShowEditor(false);
-                    toast({
-                      title: "Success",
-                      description: "Content generated and saved!"
-                    });
+                    showSuccess("Content generated and saved!");
                   }}
                   onCancel={() => setShowEditor(false)}
                   onTopicRename={async (newTitle) => {
@@ -483,17 +464,10 @@ export const Dashboard = () => {
                         t.id === selectedTopic.id ? { ...t, title: newTitle } : t
                       ));
                       
-                      toast({
-                        title: "Success",
-                        description: "Topic renamed successfully!"
-                      });
+                      showSuccess("Topic renamed successfully!");
                     } catch (error) {
                       console.error('Error renaming topic:', error);
-                      toast({
-                        title: "Error",
-                        description: "Failed to rename topic",
-                        variant: "destructive"
-                      });
+                      showError("Failed to rename topic", "Please try again.");
                     }
                   }}
                 />

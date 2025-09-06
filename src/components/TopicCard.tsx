@@ -48,15 +48,47 @@ const iconMap = {
   'dollar-sign': DollarSign,
 };
 
-const colorMap = {
-  blue: 'topic-blue',
-  purple: 'topic-purple', 
-  green: 'topic-green',
-  orange: 'topic-orange',
-  red: 'topic-red',
-  yellow: 'topic-yellow',
-  pink: 'topic-pink',
-  indigo: 'topic-indigo',
+const colorVariants = {
+  blue: {
+    bg: 'bg-[hsl(var(--color-blue)_/_0.1)]',
+    text: 'text-[hsl(var(--color-blue))]',
+    border: 'border-[hsl(var(--color-blue)_/_0.2)]'
+  },
+  purple: {
+    bg: 'bg-[hsl(var(--color-purple)_/_0.1)]', 
+    text: 'text-[hsl(var(--color-purple))]',
+    border: 'border-[hsl(var(--color-purple)_/_0.2)]'
+  },
+  green: {
+    bg: 'bg-[hsl(var(--color-green)_/_0.1)]',
+    text: 'text-[hsl(var(--color-green))]',
+    border: 'border-[hsl(var(--color-green)_/_0.2)]'
+  },
+  orange: {
+    bg: 'bg-[hsl(var(--color-orange)_/_0.1)]',
+    text: 'text-[hsl(var(--color-orange))]',
+    border: 'border-[hsl(var(--color-orange)_/_0.2)]'
+  },
+  red: {
+    bg: 'bg-[hsl(var(--color-red)_/_0.1)]',
+    text: 'text-[hsl(var(--color-red))]',
+    border: 'border-[hsl(var(--color-red)_/_0.2)]'
+  },
+  yellow: {
+    bg: 'bg-[hsl(var(--color-yellow)_/_0.1)]',
+    text: 'text-[hsl(var(--color-yellow))]',
+    border: 'border-[hsl(var(--color-yellow)_/_0.2)]'
+  },
+  pink: {
+    bg: 'bg-[hsl(var(--color-pink)_/_0.1)]',
+    text: 'text-[hsl(var(--color-pink))]',
+    border: 'border-[hsl(var(--color-pink)_/_0.2)]'
+  },
+  indigo: {
+    bg: 'bg-[hsl(var(--color-indigo)_/_0.1)]',
+    text: 'text-[hsl(var(--color-indigo))]',
+    border: 'border-[hsl(var(--color-indigo)_/_0.2)]'
+  }
 };
 
 export const TopicCard = ({ 
@@ -71,7 +103,7 @@ export const TopicCard = ({
   const [isHovered, setIsHovered] = useState(false);
   
   const IconComponent = iconMap[topic.icon_name as keyof typeof iconMap] || Code;
-  const colorClass = colorMap[topic.color as keyof typeof colorMap] || 'topic-blue';
+  const colorVariant = colorVariants[topic.color as keyof typeof colorVariants] || colorVariants.blue;
 
   return (
     <Card 
@@ -88,7 +120,8 @@ export const TopicCard = ({
         {/* Icon centered at top */}
         <div className={cn(
           "flex items-center justify-center w-12 h-12 rounded-lg transition-colors mb-3",
-          `bg-${colorClass}/10 text-${colorClass}`
+          colorVariant.bg,
+          colorVariant.text
         )}>
           <IconComponent className="w-6 h-6" />
         </div>
