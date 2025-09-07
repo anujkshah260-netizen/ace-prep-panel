@@ -44,6 +44,10 @@ export const Dashboard = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showEditor, setShowEditor] = useState(false);
   const [showDocumentManager, setShowDocumentManager] = useState(false);
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const [showPracticeMode, setShowPracticeMode] = useState(false);
+  const [showProgressDashboard, setShowProgressDashboard] = useState(false);
+  const [showInterviewSimulator, setShowInterviewSimulator] = useState(false);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
