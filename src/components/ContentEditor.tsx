@@ -9,6 +9,7 @@ import {
   FileText, Wand2, Edit2
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { generateSingleTopicContent } from '@/api/generate-content';
 
 interface Topic {
   id: string;
@@ -20,7 +21,7 @@ interface ContentVersion {
   id: string;
   bullets: string[];
   script: string;
-  cross_questions: Array<{ q: string; a: string; }>;
+  cross_questions: string[];
   source_notes: string;
   is_favorite: boolean;
   created_at: string;
@@ -53,7 +54,7 @@ export const ContentEditor = ({
   const [editedScript, setEditedScript] = useState(
     currentContent?.script || ''
   );
-  const [editedCrossQuestions, setEditedCrossQuestions] = useState<Array<{ q: string; a: string; }>>(
+  const [editedCrossQuestions, setEditedCrossQuestions] = useState<string[]>(
     currentContent?.cross_questions || []
   );
   const { toast } = useToast();
@@ -71,42 +72,38 @@ export const ContentEditor = ({
     setIsGenerating(true);
     
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        throw new Error('No active session');
+      const response = await generateSingleTopicContent(
+        topic.id,
+        topic.title,
+        sourceNotes.trim()
+      );
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to generate content');
       }
 
-      const response = await supabase.functions.invoke('generate-content', {
-        body: {
-          topicId: topic.id,
-          sourceNotes: sourceNotes.trim(),
-          topicTitle: topic.title,
-          options: {
-            tone: 'confident',
-            length: '90s'
-          }
-        }
-      });
+      // Fetch the generated content from database
+      const { data: contentData, error: fetchError } = await supabase
+        .from('topic_content_versions')
+        .select('*')
+        .eq('topic_id', topic.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
 
-      if (response.error) {
-        console.error('Function error:', response.error);
-        throw new Error(response.error.message || 'Failed to generate content');
-      }
-
-      if (!response.data.success) {
-        throw new Error(response.data.error || 'Failed to generate content');
+      if (fetchError) {
+        throw new Error('Failed to fetch generated content');
       }
 
       // Create the new content object
       const newContent: ContentVersion = {
-        id: response.data.versionId,
-        bullets: response.data.content.bullets || [],
-        script: response.data.content.script || '',
-        cross_questions: response.data.content.cross_questions || [],
-        source_notes: sourceNotes.trim(),
-        is_favorite: false,
-        created_at: new Date().toISOString()
+        id: contentData.id,
+        bullets: Array.isArray(contentData.bullets) ? contentData.bullets as string[] : [],
+        script: contentData.script || '',
+        cross_questions: Array.isArray(contentData.cross_questions) ? contentData.cross_questions as string[] : [],
+        source_notes: contentData.source_notes || sourceNotes.trim(),
+        is_favorite: contentData.is_favorite || false,
+        created_at: contentData.created_at
       };
 
       onContentSaved(newContent);
@@ -381,60 +378,47 @@ Paste any notes, experiences, or key points you want to discuss...`}
             </CardHeader>
             <CardContent>
               {isEditing ? (
-                <div className="space-y-4">
-                  {editedCrossQuestions.map((qa, index) => (
-                    <div key={index} className="space-y-2 p-3 border rounded-lg">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={qa.q}
-                          onChange={(e) => {
-                            const newQAs = [...editedCrossQuestions];
-                            newQAs[index].q = e.target.value;
-                            setEditedCrossQuestions(newQAs);
-                          }}
-                          className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20"
-                          placeholder="Question..."
-                        />
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setEditedCrossQuestions(editedCrossQuestions.filter((_, i) => i !== index));
-                          }}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          ×
-                        </Button>
-                      </div>
-                      <Textarea
-                        value={qa.a}
+                <div className="space-y-2">
+                  {editedCrossQuestions.map((question, index) => (
+                    <div key={index} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={question}
                         onChange={(e) => {
-                          const newQAs = [...editedCrossQuestions];
-                          newQAs[index].a = e.target.value;
-                          setEditedCrossQuestions(newQAs);
+                          const newQuestions = [...editedCrossQuestions];
+                          newQuestions[index] = e.target.value;
+                          setEditedCrossQuestions(newQuestions);
                         }}
-                        rows={2}
-                        className="resize-none"
-                        placeholder="Answer..."
+                        className="flex-1 px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        placeholder="Enter cross question..."
                       />
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setEditedCrossQuestions(editedCrossQuestions.filter((_, i) => i !== index));
+                        }}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        ×
+                      </Button>
                     </div>
                   ))}
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setEditedCrossQuestions([...editedCrossQuestions, { q: '', a: '' }])}
+                    onClick={() => setEditedCrossQuestions([...editedCrossQuestions, ''])}
                     className="gap-1"
                   >
-                    + Add Q&A
+                    + Add Question
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-3">
-                  {currentContent.cross_questions.map((qa, index) => (
-                    <div key={index} className="p-3 border rounded-lg">
-                      <p className="font-semibold text-primary mb-2">Q: {qa.q}</p>
-                      <p className="text-muted-foreground">A: {qa.a}</p>
+                <div className="space-y-2">
+                  {currentContent.cross_questions.map((question, index) => (
+                    <div key={index} className="flex items-start gap-2">
+                      <span className="text-primary font-semibold">Q{index + 1}:</span>
+                      <span>{question}</span>
                     </div>
                   ))}
                 </div>

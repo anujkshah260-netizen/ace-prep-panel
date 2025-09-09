@@ -30,7 +30,7 @@ interface ContentVersion {
   id: string;
   bullets: string[];
   script: string;
-  cross_questions: Array<{ q: string; a: string; }>;
+  cross_questions: string[];
   source_notes: string;
   is_favorite: boolean;
   created_at: string;

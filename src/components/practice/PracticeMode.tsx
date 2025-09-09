@@ -19,7 +19,7 @@ interface Topic {
 interface ContentVersion {
   bullets: string[];
   script: string;
-  cross_questions: Array<{ q: string; a: string; }>;
+  cross_questions: string[];
 }
 
 interface PracticeModeProps {
@@ -332,16 +332,16 @@ export const PracticeMode = ({ topic, content, onComplete, onExit }: PracticeMod
                   <div className="bg-card p-6 rounded-lg border-2 border-primary/20">
                     <h3 className="font-semibold text-primary mb-4">Question:</h3>
                     <p className="text-lg mb-6">
-                      {content.cross_questions[currentQuestionIndex]?.q}
+                      {content.cross_questions[currentQuestionIndex]}
                     </p>
                     
                     <details className="group">
                       <summary className="cursor-pointer text-primary font-medium hover:text-primary/80">
-                        View Suggested Answer ▼
+                        View Practice Tips ▼
                       </summary>
                       <div className="mt-4 p-4 bg-muted/50 rounded-lg">
                         <p className="text-muted-foreground">
-                          {content.cross_questions[currentQuestionIndex]?.a}
+                          This is a follow-up question. Use your prepared talking points and experience to provide a detailed, specific answer. Focus on concrete examples and measurable outcomes.
                         </p>
                       </div>
                     </details>

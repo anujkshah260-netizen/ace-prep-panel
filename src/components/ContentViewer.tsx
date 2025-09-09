@@ -20,7 +20,7 @@ interface ContentVersion {
   id: string;
   bullets: string[];
   script: string;
-  cross_questions: Array<{ q: string; a: string; }>;
+  cross_questions: string[];
   source_notes: string;
   is_favorite: boolean;
   created_at: string;
@@ -201,11 +201,7 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {content.cross_questions?.map((qa, index) => {
-              // Handle both string format and object format for cross questions
-              const question = typeof qa === 'string' ? qa : qa?.q || '';
-              const answer = typeof qa === 'string' ? 'Follow-up answer would be provided during interview.' : qa?.a || '';
-              
+            {content.cross_questions?.map((question, index) => {
               return (
                 <div key={index} className="space-y-2">
                   <div className="font-medium text-foreground">
@@ -214,7 +210,7 @@ export const ContentViewer = ({ topic, content, onEdit }: ContentViewerProps) =>
                   </div>
                   <div className="text-muted-foreground leading-relaxed pl-6">
                     <strong>A:</strong> 
-                    <span dangerouslySetInnerHTML={{ __html: highlightKeywords(answer) }} />
+                    <span dangerouslySetInnerHTML={{ __html: highlightKeywords('This is a follow-up question that would be answered during the interview based on your response.') }} />
                   </div>
                   {index < content.cross_questions.length - 1 && (
                     <Separator className="my-4" />

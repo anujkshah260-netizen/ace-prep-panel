@@ -22,7 +22,7 @@ export interface GenerateContentResponse {
   content?: {
     bullets: string[];
     script: string;
-    cross_questions: Array<{ q: string; a: string; }>;
+    cross_questions: string[];
   };
   versionId?: string;
   error?: string;
@@ -160,7 +160,8 @@ export const generateSingleTopicContent = async (
 
     return {
       success: true,
-      message: data.message || 'Topic content generated successfully'
+      message: data.message || 'Topic content generated successfully',
+      versionId: data.version?.id
     };
 
   } catch (error) {
